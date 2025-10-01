@@ -662,7 +662,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
                   ),
                 ),
                 SizedBox(height: 8),
-                Container(
+                SizedBox(
                   height: 100,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,

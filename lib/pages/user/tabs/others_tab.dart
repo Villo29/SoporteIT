@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../login_page.dart';
 
 class OthersTab extends StatelessWidget {
   const OthersTab({super.key});
@@ -326,15 +327,9 @@ class OthersTab extends StatelessWidget {
     Future.delayed(Duration(seconds: 1), () {
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) {
-          return Container();
-        }),
+        MaterialPageRoute(builder: (context) => LoginPage()),
         (route) => false,
       );
     });
-  }
-
-  void _showSnackBar(String message) {
-    print(message);
   }
 }

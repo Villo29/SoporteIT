@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'home_page.dart';
+import 'user/user_home_page.dart';
+import 'admin/admin_home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,14 +13,55 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
-  void _login() {
+  void _login() async {
     if (_formKey.currentState!.validate()) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => HomePage()),
-      );
+      setState(() {
+        _isLoading = true;
+      });
+
+      await Future.delayed(Duration(seconds: 2));
+
+      String email = _emailController.text.trim().toLowerCase();
+      bool isAdmin = _isAdminUser(email);
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Navegar según el tipo de usuario
+      if (isAdmin) {
+        _navigateToAdmin();
+      } else {
+        _navigateToUser();
+      }
     }
+  }
+
+  bool _isAdminUser(String email) {
+    List<String> adminEmails = [
+      'admin@aditech.com',
+      'administrador@aditech.com',
+      'soporte@aditech.com',
+      'sistemas@aditech.com',
+    ];
+
+    return adminEmails.contains(email) || email.contains('admin');
+  }
+
+  void _navigateToUser() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => UserHomePage()),
+    );
+  }
+
+  void _navigateToAdmin() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => AdminMainScreen()),
+    );
   }
 
   @override
@@ -106,17 +148,45 @@ class _LoginPageState extends State<LoginPage> {
                       return null;
                     },
                   ),
-                  SizedBox(height: 30),
+                  SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed: _login,
+                    onPressed: _isLoading ? null : _login,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFF1C9985),
                       minimumSize: Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    child: Text(
-                      'Iniciar Sesión',
-                      style: TextStyle(fontSize: 18, color: Color(0xFFFFFFFF)),
-                    ),
+                    child: _isLoading
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                'Verificando...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            'Iniciar Sesión',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
                   ),
                 ],
               ),

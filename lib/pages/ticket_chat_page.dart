@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class TicketChatPage extends StatefulWidget {
   final String ticketId;
 
-  const TicketChatPage({Key? key, required this.ticketId}) : super(key: key);
+  const TicketChatPage({super.key, required this.ticketId});
 
   @override
   _TicketChatPageState createState() => _TicketChatPageState();
@@ -13,7 +13,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  List<Map<String, dynamic>> _messages = [
+  final List<Map<String, dynamic>> _messages = [
     {
       'id': '1',
       'sender': 'support',

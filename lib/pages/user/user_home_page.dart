@@ -4,14 +4,14 @@ import 'tabs/reports_tab.dart';
 import 'tabs/news_tab.dart';
 import 'tabs/others_tab.dart';
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class UserHomePage extends StatefulWidget {
+  const UserHomePage({super.key});
 
   @override
-  _HomePageState createState() => _HomePageState();
+  _UserHomePageState createState() => _UserHomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _UserHomePageState extends State<UserHomePage> {
   int _currentIndex = 0;
 
   final List<Widget> _tabs = [
@@ -52,7 +52,7 @@ class _HomePageState extends State<HomePage> {
         },
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
-        selectedItemColor: Color(0xFF1C9985),
+        selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,
         selectedLabelStyle: TextStyle(fontSize: 12),
         unselectedLabelStyle: TextStyle(fontSize: 12),
