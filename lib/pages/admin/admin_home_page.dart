@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'tabs/admin_tickets_tab.dart';
-enum TabType { dashboard, tickets, users, reports, settings }
+import 'tabs/admin_users_tab.dart';
+import 'tabs/admin_analytics_tab.dart';
+enum TabType { dashboard, tickets, users, noticias, settings }
 enum ScreenType { main, ticketDetail, userDetail }
 
 class AdminMainScreen extends StatefulWidget {
@@ -46,8 +48,8 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
         return AdminTicketsTab(onOpenTicketDetail: handleOpenTicketDetail);
       case TabType.users:
         return AdminUsersTab(onOpenUserDetail: handleOpenUserDetail);
-      case TabType.reports:
-        return const AdminReportsTab();
+      case TabType.noticias:
+        return const AdminNoticiasTab();
       case TabType.settings:
         return const AdminSettingsTab();
     }
@@ -66,7 +68,6 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
           onBack: handleBackToMain,
         );
       case ScreenType.main:
-      default:
         return _MainScaffold(
           header: const _Header(),
           content: _renderContent(),
@@ -110,10 +111,10 @@ class _MainScaffold extends StatelessWidget {
                 child: content,
               ),
             ),
-            bottomNav,
           ],
         ),
       ),
+      bottomNavigationBar: bottomNav,
     );
   }
 }
@@ -170,43 +171,38 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey[300]!)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => onChanged(TabType.values[i]),
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: Color(0xFF1C9985),
-        unselectedItemColor: Colors.grey,
-        selectedLabelStyle: TextStyle(fontSize: 12),
-        unselectedLabelStyle: TextStyle(fontSize: 12),
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined, size: 24),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.confirmation_number_outlined, size: 24),
-            label: 'Tickets',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.group_outlined, size: 24),
-            label: 'Usuarios',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.insert_drive_file_outlined, size: 24),
-            label: 'Reportes',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined, size: 24),
-            label: 'Config',
-          ),
-        ],
-      ),
+    return BottomNavigationBar(
+      currentIndex: _currentIndex,
+      onTap: (i) => onChanged(TabType.values[i]),
+      type: BottomNavigationBarType.fixed,
+      backgroundColor: Colors.white,
+      selectedItemColor: const Color(0xFF1C9985),
+      unselectedItemColor: Colors.grey,
+      selectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: const TextStyle(fontSize: 12),
+      elevation: 8,
+      items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.bar_chart_outlined, size: 24),
+          label: 'Dashboard',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.confirmation_number_outlined, size: 24),
+          label: 'Tickets',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.group_outlined, size: 24),
+          label: 'Usuarios',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.article_outlined, size: 24),
+          label: 'Noticias',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.settings_outlined, size: 24),
+          label: 'Config',
+        ),
+      ],
     );
   }
 }
@@ -505,8 +501,6 @@ class AdminDashboardTab extends StatelessWidget {
         // Recent Tickets - Responsive
         LayoutBuilder(
           builder: (context, constraints) {
-            bool isMobile = constraints.maxWidth < 600;
-            
             return Card(
               elevation: 0,
               color: Colors.white,
@@ -587,57 +581,12 @@ class AdminDashboardTab extends StatelessWidget {
 
 
 
-class AdminUsersTab extends StatelessWidget {
-  const AdminUsersTab({
-    super.key,
-    required this.onOpenUserDetail,
-  });
-
-  final void Function(String userId) onOpenUserDetail;
+class AdminNoticiasTab extends StatelessWidget {
+  const AdminNoticiasTab({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final users = List.generate(
-      15,
-      (i) => (
-        id: 'U-${2000 + i}',
-        name: 'Usuario ${i + 1}',
-        role: i % 3 == 0 ? 'Admin' : 'Agente',
-      ),
-    );
-
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: users.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final u = users[index];
-        return _TileCard(
-          leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-          title: '${u.id} · ${u.name}',
-          subtitle: 'Rol: ${u.role}',
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => onOpenUserDetail(u.id),
-        );
-      },
-    );
-  }
-}
-
-class AdminReportsTab extends StatelessWidget {
-  const AdminReportsTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: const [
-        _SectionCard(
-          title: 'Reportes',
-          child: Text('Aquí irían filtros, rangos de fecha y exportaciones.'),
-        ),
-      ],
-    );
+    return const AdminNewsSettings();
   }
 }
 
@@ -762,75 +711,9 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _TileCard extends StatelessWidget {
-  const _TileCard({
-    required this.leading,
-    required this.title,
-    this.subtitle,
-    this.trailing,
-    this.onTap,
-  });
 
-  final Widget leading;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-  final VoidCallback? onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              leading,
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (trailing != null) ...[
-                const SizedBox(width: 12),
-                trailing!,
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
-// Chip/badge minimalista
 class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
   final String label;

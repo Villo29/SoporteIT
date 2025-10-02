@@ -456,28 +456,63 @@ class _TicketCard extends StatelessWidget {
             // Details line
             DefaultTextStyle(
               style: Theme.of(context).textTheme.bodySmall!.copyWith(color: Colors.grey[600]),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(children: [
-                    Text(user),
-                    const SizedBox(width: 6),
-                    const Text('•'),
-                    const SizedBox(width: 6),
-                    Text(category),
-                    if (assignedTo != null) ...[
-                      const SizedBox(width: 6),
-                      const Text('•'),
-                      const SizedBox(width: 6),
-                      Text('Asignado: $assignedTo'),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isMobile = constraints.maxWidth < 400;
+                  
+                  if (isMobile) {
+                    // Mobile layout: stack vertically
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(children: [
+                          Text(user),
+                          const Text(' • '),
+                          Text(category),
+                          if (assignedTo != null) ...[
+                            const Text(' • '),
+                            Text('Asignado: $assignedTo'),
+                          ],
+                        ]),
+                        const SizedBox(height: 4),
+                        Wrap(children: [
+                          Text('$responses respuestas'),
+                          const Text(' • '),
+                          Text('Actualizado: $lastUpdate'),
+                        ]),
+                      ],
+                    );
+                  }
+                  
+                  // Desktop layout: original horizontal
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Row(children: [
+                          Text(user),
+                          const SizedBox(width: 6),
+                          const Text('•'),
+                          const SizedBox(width: 6),
+                          Text(category),
+                          if (assignedTo != null) ...[
+                            const SizedBox(width: 6),
+                            const Text('•'),
+                            const SizedBox(width: 6),
+                            Text('Asignado: $assignedTo'),
+                          ],
+                        ]),
+                      ),
+                      Flexible(
+                        child: Row(children: [
+                          Text('$responses respuestas'),
+                          const SizedBox(width: 12),
+                          Text('Actualizado: $lastUpdate'),
+                        ]),
+                      ),
                     ],
-                  ]),
-                  Row(children: [
-                    Text('$responses respuestas'),
-                    const SizedBox(width: 12),
-                    Text('Actualizado: $lastUpdate'),
-                  ]),
-                ],
+                  );
+                },
               ),
             ),
 

@@ -12,13 +12,10 @@ class AdminDashboardTab extends StatelessWidget {
           children: [
             Text(
               'Dashboard Administrativo',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
-            
+
             // Stats cards
             Row(
               children: [
@@ -41,9 +38,9 @@ class AdminDashboardTab extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             SizedBox(height: 12),
-            
+
             Row(
               children: [
                 Expanded(
@@ -65,19 +62,16 @@ class AdminDashboardTab extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             SizedBox(height: 24),
-            
+
             // Recent activity
             Text(
               'Actividad Reciente',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
-            
+
             _buildActivityCard(
               title: 'Ticket #001 - Servidor caído',
               subtitle: 'Asignado a Juan Pérez',
@@ -85,7 +79,7 @@ class AdminDashboardTab extends StatelessWidget {
               status: 'Crítico',
               statusColor: Colors.red,
             ),
-            
+
             _buildActivityCard(
               title: 'Nuevo usuario registrado',
               subtitle: 'María González',
@@ -93,7 +87,7 @@ class AdminDashboardTab extends StatelessWidget {
               status: 'Info',
               statusColor: Colors.blue,
             ),
-            
+
             _buildActivityCard(
               title: 'Ticket #025 resuelto',
               subtitle: 'Problema de impresora',
@@ -125,10 +119,7 @@ class AdminDashboardTab extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     maxLines: 2,
                   ),
                 ),
@@ -165,11 +156,7 @@ class AdminDashboardTab extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: statusColor.withOpacity(0.1),
-          child: Icon(
-            Icons.notifications,
-            color: statusColor,
-            size: 20,
-          ),
+          child: Icon(Icons.notifications, color: statusColor, size: 20),
         ),
         title: Text(
           title,
@@ -180,10 +167,7 @@ class AdminDashboardTab extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(
-              time,
-              style: TextStyle(fontSize: 10, color: Colors.grey),
-            ),
+            Text(time, style: TextStyle(fontSize: 10, color: Colors.grey)),
             SizedBox(height: 4),
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
