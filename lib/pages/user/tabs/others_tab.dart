@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../login_page.dart';
+import '../../../services/auth_service.dart';
 
 class OthersTab extends StatelessWidget {
   const OthersTab({super.key});
@@ -287,49 +288,94 @@ class OthersTab extends StatelessWidget {
     print('Abriendo términos y condiciones...');
   }
 
-  void _logout(BuildContext context) {
-    showDialog(
+  Future<void> _logout(BuildContext context) async {
+    // Mostrar dialog de confirmación
+    final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Cerrar Sesión'),
-          content: Text('¿Estás seguro de que quieres cerrar sesión?'),
+          title: const Row(
+            children: [
+              Icon(Icons.logout, color: Color(0xFF1C9985)),
+              SizedBox(width: 8),
+              Text('Cerrar Sesión'),
+            ],
+          ),
+          content: const Text('¿Estás seguro que deseas cerrar sesión?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _performLogout(context);
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
               ),
-              child: Text('Cerrar Sesión'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              child: const Text(
+                'Cerrar Sesión',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         );
       },
     );
+
+    if (shouldLogout == true) {
+      await _performLogout(context);
+    }
   }
 
-  void _performLogout(BuildContext context) {
-    // Mostrar SnackBar de confirmación
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Cerrando sesión...'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-
-    Future.delayed(Duration(seconds: 1), () {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => LoginPage()),
-        (route) => false,
+  Future<void> _performLogout(BuildContext context) async {
+    try {
+      // Mostrar loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 12),
+              Text('Cerrando sesión...'),
+            ],
+          ),
+          backgroundColor: Color(0xFF1C9985),
+          duration: Duration(seconds: 1),
+        ),
       );
-    });
+
+      // Limpiar sesión con AuthService
+      await AuthService.logout();
+
+      // Esperar un momento
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      if (context.mounted) {
+        // Navegar al login eliminando todo el stack
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cerrar sesión: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

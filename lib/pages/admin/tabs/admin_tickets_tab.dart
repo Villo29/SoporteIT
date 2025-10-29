@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-
+import 'package:flutter/services.dart';
+import '../ticket_detail_page.dart';
 
 class AdminTicketsTab extends StatefulWidget {
   const AdminTicketsTab({super.key, this.onOpenTicketDetail});
-  final void Function(String ticketId)? onOpenTicketDetail; // opcional para navegación
+  final void Function(String ticketId)? onOpenTicketDetail;
 
   @override
   State<AdminTicketsTab> createState() => _AdminTicketsTabState();
@@ -21,13 +22,15 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'description': 'La impresora no responde y muestra error de papel atascado',
       'user': 'Juan Pérez',
       'userEmail': 'juan.perez@empresa.com',
-      'category': 'Impresora',
+      'category': 'Hardware',
       'priority': 'high',
       'status': 'abierto',
       'assignedTo': 'Ana García',
       'createdAt': '2024-01-15 10:30',
       'lastUpdate': '2024-01-15 14:20',
       'responses': 3,
+      'solution': '',
+      'resolutionDate': null,
     },
     {
       'id': 'TK-002',
@@ -42,6 +45,8 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'createdAt': '2024-01-15 09:15',
       'lastUpdate': '2024-01-15 15:45',
       'responses': 7,
+      'solution': '',
+      'resolutionDate': null,
     },
     {
       'id': 'TK-003',
@@ -56,6 +61,8 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'createdAt': '2024-01-15 08:45',
       'lastUpdate': '2024-01-15 08:45',
       'responses': 0,
+      'solution': '',
+      'resolutionDate': null,
     },
     {
       'id': 'TK-004',
@@ -63,13 +70,15 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'description': 'La computadora del escritorio 15 funciona muy lenta desde ayer',
       'user': 'Ana Martínez',
       'userEmail': 'ana.martinez@empresa.com',
-      'category': 'Computadora',
+      'category': 'Hardware',
       'priority': 'medium',
       'status': 'resuelto',
       'assignedTo': 'Luis Torres',
       'createdAt': '2024-01-14 16:20',
       'lastUpdate': '2024-01-15 11:30',
       'responses': 5,
+      'solution': 'Se realizó limpieza completa del sistema, eliminación de malware detectado y optimización del rendimiento. Se instaló antivirus actualizado y se configuró programa de mantenimiento preventivo.',
+      'resolutionDate': '2024-01-15 11:30',
     },
     {
       'id': 'TK-005',
@@ -77,13 +86,15 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'description': 'El teléfono de la extensión 1205 no suena para llamadas entrantes',
       'user': 'Roberto Silva',
       'userEmail': 'roberto.silva@empresa.com',
-      'category': 'Teléfono',
+      'category': 'Telefonía',
       'priority': 'high',
-      'status': 'en proceso',
+      'status': 'resuelto',
       'assignedTo': 'Ana García',
       'createdAt': '2024-01-15 13:10',
       'lastUpdate': '2024-01-15 16:00',
       'responses': 2,
+      'solution': 'Se identificó configuración incorrecta en el servidor de telefonía. Se reconfiguró la extensión 1205 y se verificó conectividad. Problema resuelto completamente.',
+      'resolutionDate': '2024-01-15 16:00',
     },
   ];
 
@@ -149,7 +160,35 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
   }
 
   void _handleChangeStatus(String id, String newStatus) {
-    debugPrint('Changing ticket $id status to $newStatus');
+    setState(() {
+      final ticketIndex = tickets.indexWhere((t) => t['id'] == id);
+      if (ticketIndex != -1) {
+        tickets[ticketIndex]['status'] = newStatus;
+        if (newStatus == 'resuelto') {
+          final now = DateTime.now();
+          tickets[ticketIndex]['resolutionDate'] = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+          tickets[ticketIndex]['solution'] = 'Ticket resuelto por el administrador.';
+        }
+      }
+    });
+  }
+
+  void _openTicketDetail(Map<String, dynamic> ticket) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TicketDetailPage(
+          ticket: ticket,
+          onUpdateTicket: (updatedTicket) {
+            setState(() {
+              final index = tickets.indexWhere((t) => t['id'] == updatedTicket['id']);
+              if (index != -1) {
+                tickets[index] = updatedTicket;
+              }
+            });
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -294,7 +333,7 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
         else
           ..._filteredTickets.map((t) => _TicketCard(
                 data: t,
-                onOpen: () => widget.onOpenTicketDetail?.call(t['id'] as String),
+                onOpen: () => _openTicketDetail(t),
                 onAssign: (assignee) => _handleAssignTicket(t['id'] as String, assignee),
                 onChangeStatus: (s) => _handleChangeStatus(t['id'] as String, s),
                 statusColor: _statusColor,

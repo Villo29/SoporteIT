@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'pages/splash_page.dart';
+import 'services/auth_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await AuthService.initializeSession();
+
   runApp(MyApp());
 }
 

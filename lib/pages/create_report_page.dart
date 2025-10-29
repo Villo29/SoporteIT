@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../services/auth_service.dart';
 
 class CreateReportPage extends StatefulWidget {
   const CreateReportPage({super.key});
@@ -16,7 +19,8 @@ class _CreateReportPageState extends State<CreateReportPage> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  
+  bool _isSubmitting = false;
+
   // Variables para archivos adjuntos
   final ImagePicker _picker = ImagePicker();
   final List<File> _selectedImages = [];
@@ -24,25 +28,25 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   final List<Map<String, dynamic>> _categories = [
     {
-      'id': 'computer',
+      'id': 'pc',
       'icon': Icons.computer,
       'label': 'Computadora',
       'color': Colors.blue,
-    },
+},
     {
-      'id': 'printer',
+      'id': 'impresora',
       'icon': Icons.print,
       'label': 'Impresora',
       'color': Colors.grey,
     },
     {
-      'id': 'network',
+      'id': 'red',
       'icon': Icons.wifi,
       'label': 'Red/Internet',
       'color': Colors.orange,
     },
     {
-      'id': 'phone',
+      'id': 'telefono',
       'icon': Icons.phone,
       'label': 'Teléfono',
       'color': Colors.red,
@@ -54,35 +58,35 @@ class _CreateReportPageState extends State<CreateReportPage> {
       'color': Colors.green,
     },
     {
-      'id': 'other',
+      'id': 'otro',
       'icon': Icons.settings,
       'label': 'Otro',
       'color': Colors.purple,
-    }
+    },
   ];
 
   final List<Map<String, dynamic>> _priorities = [
     {
-      'value': 'low',
+      'value': 'baja',
       'label': 'Baja',
       'description': 'Puede esperar',
       'color': Colors.blue,
     },
     {
-      'value': 'medium',
+      'value': 'media',
       'label': 'Media',
       'description': 'Afecta mi trabajo',
       'color': Colors.orange,
     },
     {
-      'value': 'high',
+      'value': 'alta',
       'label': 'Alta',
       'description': 'No puedo trabajar',
       'color': Colors.red,
     },
   ];
 
-  void _submitReport() {
+  Future<void> _submitReport() async {
     if (_selectedCategory == null ||
         _priority == null ||
         _titleController.text.isEmpty ||
@@ -97,36 +101,95 @@ class _CreateReportPageState extends State<CreateReportPage> {
       return;
     }
 
-    // Mostrar información del reporte (en una implementación real, aquí enviarías los datos al servidor)
-    String attachmentsInfo = '';
-    if (_selectedImages.isNotEmpty || _selectedFiles.isNotEmpty) {
-      attachmentsInfo = '\n\nArchivos adjuntos: ${_selectedImages.length} imágenes, ${_selectedFiles.length} documentos';
-    }
-
-    // Aquí iría la lógica para enviar el reporte con todos los archivos
-    print('Enviando reporte:');
-    print('Categoría: $_selectedCategory');
-    print('Prioridad: $_priority');
-    print('Título: ${_titleController.text}');
-    print('Ubicación: ${_locationController.text}');
-    print('Descripción: ${_descriptionController.text}');
-    print('Imágenes: ${_selectedImages.length}');
-    print('Archivos: ${_selectedFiles.length}');
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Reporte enviado exitosamente$attachmentsInfo'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
-      ),
-    );
-
-    // Regresar a la pantalla anterior después de enviar
-    Future.delayed(Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pop(context);
-      }
+    setState(() {
+      _isSubmitting = true;
     });
+
+    try {
+      final token = await AuthService.getCurrentToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+
+      final requestBody = {
+        'categoria': _selectedCategory!,
+        'prioridad': _priority!,
+        'titulo': _titleController.text,
+        'ubicacion': _locationController.text,
+        'descripcion_detallada': _descriptionController.text,
+      };
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/tickets/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = jsonDecode(response.body);
+        String successMessage = 'Reporte enviado exitosamente';
+        if (responseData['id'] != null) {
+          successMessage += '\nNúmero de ticket: TK-${responseData['id']}';
+        }
+
+        if (_selectedImages.isNotEmpty || _selectedFiles.isNotEmpty) {
+          successMessage +=
+              '\n\nArchivos adjuntos: ${_selectedImages.length} imágenes, ${_selectedFiles.length} documentos';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+
+        Future.delayed(Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+        });
+      } else {
+        final errorData = jsonDecode(response.body);
+        String errorMessage = 'Error al enviar el reporte';
+
+        if (errorData['detail'] != null) {
+          errorMessage = errorData['detail'];
+        } else if (errorData['message'] != null) {
+          errorMessage = errorData['message'];
+        }
+
+        throw Exception(errorMessage);
+      }
+    } catch (e) {
+
+      String errorMessage = 'Error al enviar el reporte';
+      if (e.toString().contains('No se encontró el token')) {
+        errorMessage = 'Sesión expirada. Por favor inicia sesión nuevamente.';
+      } else if (e.toString().contains('Connection')) {
+        errorMessage = 'Error de conexión. Verifica tu internet.';
+      } else if (e.toString().contains('Exception:')) {
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
   }
 
   void _takePicture() async {
@@ -137,7 +200,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
         maxWidth: 1920,
         maxHeight: 1080,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImages.add(File(image.path));
@@ -161,7 +224,6 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   void _pickFile() async {
     try {
-      // Mostrar opciones: Galería o Documentos
       await showModalBottomSheet<void>(
         context: context,
         builder: (BuildContext context) {
@@ -214,7 +276,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
         maxWidth: 1920,
         maxHeight: 1080,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImages.add(File(image.path));
@@ -299,36 +361,36 @@ class _CreateReportPageState extends State<CreateReportPage> {
           padding: EdgeInsets.all(16),
           child: Column(
             children: [
-            // Tipo de Problema
-            _buildCategoryCard(),
-            SizedBox(height: 16),
-            
-            // Título del Problema
-            _buildTitleCard(),
-            SizedBox(height: 16),
-            
-            // Prioridad
-            _buildPriorityCard(),
-            SizedBox(height: 16),
-            
-            // Ubicación
-            _buildLocationCard(),
-            SizedBox(height: 16),
-            
-            // Descripción Detallada
-            _buildDescriptionCard(),
-            SizedBox(height: 16),
-            
-            // Archivos Adjuntos
-            _buildAttachmentsCard(),
-            SizedBox(height: 24),
-            
-            // Botón Enviar
-            _buildSubmitButton(),
-          ],
+              // Tipo de Problema
+              _buildCategoryCard(),
+              SizedBox(height: 16),
+
+              // Título del Problema
+              _buildTitleCard(),
+              SizedBox(height: 16),
+
+              // Prioridad
+              _buildPriorityCard(),
+              SizedBox(height: 16),
+
+              // Ubicación
+              _buildLocationCard(),
+              SizedBox(height: 16),
+
+              // Descripción Detallada
+              _buildDescriptionCard(),
+              SizedBox(height: 16),
+
+              // Archivos Adjuntos
+              _buildAttachmentsCard(),
+              SizedBox(height: 24),
+
+              // Botón Enviar
+              _buildSubmitButton(),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -342,10 +404,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Tipo de Problema',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
             GridView.builder(
@@ -371,7 +430,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   Widget _buildCategoryItem(Map<String, dynamic> category) {
     final isSelected = _selectedCategory == category['id'];
-    
+
     return GestureDetector(
       onTap: () {
         setState(() {
@@ -385,7 +444,9 @@ class _CreateReportPageState extends State<CreateReportPage> {
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(8),
-          color: isSelected ? category['color'].withOpacity(0.1) : Colors.grey[50],
+          color: isSelected
+              ? category['color'].withOpacity(0.1)
+              : Colors.grey[50],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -396,19 +457,12 @@ class _CreateReportPageState extends State<CreateReportPage> {
                 color: category['color'],
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(
-                category['icon'],
-                color: Colors.white,
-                size: 20,
-              ),
+              child: Icon(category['icon'], color: Colors.white, size: 20),
             ),
             SizedBox(height: 8),
             Text(
               category['label'],
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
               textAlign: TextAlign.center,
             ),
           ],
@@ -427,18 +481,12 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Título del Problema',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
             Text(
               'Describe brevemente el problema',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             SizedBox(height: 8),
             TextField(
@@ -447,7 +495,10 @@ class _CreateReportPageState extends State<CreateReportPage> {
               decoration: InputDecoration(
                 hintText: 'Ej: Mi computadora se reinicia sola',
                 border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
               ),
             ),
           ],
@@ -466,10 +517,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Prioridad',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -484,7 +532,10 @@ class _CreateReportPageState extends State<CreateReportPage> {
                   child: Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: priority['color'],
                           borderRadius: BorderRadius.circular(4),
@@ -526,18 +577,12 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Ubicación',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
             Text(
               '¿Dónde se encuentra el problema?',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             SizedBox(height: 8),
             TextField(
@@ -546,7 +591,10 @@ class _CreateReportPageState extends State<CreateReportPage> {
               decoration: InputDecoration(
                 hintText: 'Ej: Oficina 205, Piso 2',
                 border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
               ),
             ),
           ],
@@ -565,18 +613,12 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Descripción Detallada',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
             Text(
               'Describe qué pasó, cuándo empezó, y qué estabas haciendo',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             SizedBox(height: 8),
             TextField(
@@ -587,7 +629,8 @@ class _CreateReportPageState extends State<CreateReportPage> {
                 FocusScope.of(context).unfocus();
               },
               decoration: InputDecoration(
-                hintText: 'Ejemplo: Estaba trabajando en Excel cuando de repente la pantalla se puso azul y la computadora se reinició. Esto ha pasado 3 veces hoy...',
+                hintText:
+                    'Ejemplo: Estaba trabajando en Excel cuando de repente la pantalla se puso azul y la computadora se reinició. Esto ha pasado 3 veces hoy...',
                 border: OutlineInputBorder(),
                 alignLabelWithHint: true,
                 contentPadding: EdgeInsets.all(12),
@@ -609,10 +652,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
           children: [
             Text(
               'Archivos Adjuntos (Opcional)',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
             Row(
@@ -639,18 +679,15 @@ class _CreateReportPageState extends State<CreateReportPage> {
               ],
             ),
             SizedBox(height: 12),
-            
+
             // Mostrar archivos seleccionados
             if (_selectedImages.isNotEmpty || _selectedFiles.isNotEmpty) ...[
               Text(
                 'Archivos seleccionados:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               SizedBox(height: 8),
-              
+
               // Mostrar imágenes
               if (_selectedImages.isNotEmpty) ...[
                 Text(
@@ -702,7 +739,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
                 ),
                 SizedBox(height: 12),
               ],
-              
+
               // Mostrar archivos
               if (_selectedFiles.isNotEmpty) ...[
                 Text(
@@ -718,7 +755,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
                   int index = entry.key;
                   File file = entry.value;
                   String fileName = file.path.split('/').last;
-                  
+
                   return Container(
                     margin: EdgeInsets.only(bottom: 8),
                     padding: EdgeInsets.all(12),
@@ -753,10 +790,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
             ] else ...[
               Text(
                 'Las fotos ayudan a entender mejor el problema',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
             ],
           ],
@@ -785,10 +819,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
             SizedBox(height: 8),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -808,7 +839,8 @@ class _CreateReportPageState extends State<CreateReportPage> {
                 return ValueListenableBuilder(
                   valueListenable: _descriptionController,
                   builder: (context, descriptionValue, _) {
-                    final isFormValid = _selectedCategory != null &&
+                    final isFormValid =
+                        _selectedCategory != null &&
                         _priority != null &&
                         _titleController.text.isNotEmpty &&
                         _locationController.text.isNotEmpty &&
@@ -818,19 +850,48 @@ class _CreateReportPageState extends State<CreateReportPage> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: isFormValid ? _submitReport : null,
+                        onPressed: (isFormValid && !_isSubmitting)
+                            ? _submitReport
+                            : null,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: isFormValid ? Colors.blue : Colors.grey[400],
+                          backgroundColor: (isFormValid && !_isSubmitting)
+                              ? Colors.blue
+                              : Colors.grey[400],
                           disabledBackgroundColor: Colors.grey[300],
                         ),
-                        child: Text(
-                          'Enviar Reporte',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
+                        child: _isSubmitting
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Enviando...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                'Enviar Reporte',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
                       ),
                     );
                   },
@@ -841,10 +902,13 @@ class _CreateReportPageState extends State<CreateReportPage> {
         ),
         SizedBox(height: 8),
         Text(
-          'Recibirás una confirmación por email',
+          _isSubmitting
+              ? 'Enviando reporte al servidor...'
+              : 'Recibirás una confirmación por email',
           style: TextStyle(
             fontSize: 14,
-            color: Colors.grey[600],
+            color: _isSubmitting ? Colors.blue : Colors.grey[600],
+            fontStyle: _isSubmitting ? FontStyle.italic : FontStyle.normal,
           ),
         ),
       ],

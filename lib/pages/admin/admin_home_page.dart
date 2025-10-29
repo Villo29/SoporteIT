@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'tabs/admin_tickets_tab.dart';
 import 'tabs/admin_users_tab.dart';
 import 'tabs/admin_analytics_tab.dart';
+import 'tabs/admin_settings_tab.dart';
 enum TabType { dashboard, tickets, users, noticias, settings }
 enum ScreenType { main, ticketDetail, userDetail }
 
@@ -51,7 +52,7 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
       case TabType.noticias:
         return const AdminNoticiasTab();
       case TabType.settings:
-        return const AdminSettingsTab();
+        return AdminSettingsTabWrapper();
     }
   }
 
@@ -69,7 +70,6 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
         );
       case ScreenType.main:
         return _MainScaffold(
-          header: const _Header(),
           content: _renderContent(),
           bottomNav: _BottomNav(
             activeTab: activeTab,
@@ -87,12 +87,10 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
 
 class _MainScaffold extends StatelessWidget {
   const _MainScaffold({
-    required this.header,
     required this.content,
     required this.bottomNav,
   });
 
-  final Widget header;
   final Widget content;
   final Widget bottomNav;
 
@@ -101,59 +99,12 @@ class _MainScaffold extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            header,
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.white),
-                child: content,
-              ),
-            ),
-          ],
+        child: DecoratedBox(
+          decoration: BoxDecoration(color: Colors.white),
+          child: content,
         ),
       ),
       bottomNavigationBar: bottomNav,
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF1C9985);
-    return Container(
-      color: primaryColor,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Panel de Administración',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Text(
-              'Admin',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelMedium
-                  ?.copyWith(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -590,20 +541,12 @@ class AdminNoticiasTab extends StatelessWidget {
   }
 }
 
-class AdminSettingsTab extends StatelessWidget {
-  const AdminSettingsTab({super.key});
+class AdminSettingsTabWrapper extends StatelessWidget {
+  const AdminSettingsTabWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: const [
-        _SectionCard(
-          title: 'Configuración',
-          child: Text('Preferencias del sistema, tema, integración, etc.'),
-        ),
-      ],
-    );
+    return AdminSettingsTab();
   }
 }
 class TicketDetailScreen extends StatelessWidget {

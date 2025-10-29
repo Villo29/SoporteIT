@@ -18,12 +18,8 @@ class _HomePageState extends State<HomePage> {
     DashboardTab(),
     ReportsTab(
       onOpenTicketChat: (ticketId) {
-        // Navegar a pantalla de chat del ticket
-        // Esta función se manejará desde el ReportsTab directamente
       },
       onCreateReport: () {
-        // Navegar a pantalla de crear reporte
-        // Esta función se manejará desde el ReportsTab directamente
       },
     ),
     NewsTab(),

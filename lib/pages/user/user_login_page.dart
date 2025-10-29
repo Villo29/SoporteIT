@@ -20,10 +20,7 @@ class _UserLoginPageState extends State<UserLoginPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.green.shade700,
-              Colors.green.shade500,
-            ],
+            colors: [Colors.green.shade700, Colors.green.shade500],
           ),
         ),
         child: SafeArea(
@@ -33,8 +30,7 @@ class _UserLoginPageState extends State<UserLoginPage> {
               child: Column(
                 children: [
                   SizedBox(height: 40),
-                  
-                  // Back button
+
                   Row(
                     children: [
                       IconButton(
@@ -47,10 +43,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                       ),
                     ],
                   ),
-                  
                   SizedBox(height: 20),
-                  
-                  // Header
+
                   Container(
                     width: 100,
                     height: 100,
@@ -71,9 +65,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                       color: Colors.green.shade700,
                     ),
                   ),
-                  
                   SizedBox(height: 24),
-                  
+
                   Text(
                     'Usuario Final',
                     style: TextStyle(
@@ -82,7 +75,7 @@ class _UserLoginPageState extends State<UserLoginPage> {
                       color: Colors.white,
                     ),
                   ),
-                  
+
                   Text(
                     'Accede a tu cuenta para crear tickets',
                     style: TextStyle(
@@ -90,10 +83,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                       color: Colors.white.withOpacity(0.9),
                     ),
                   ),
-                  
                   SizedBox(height: 40),
-                  
-                  // Login form
+
                   Card(
                     elevation: 8,
                     shape: RoundedRectangleBorder(
@@ -115,10 +106,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                               ),
                             ),
                           ),
-                          
                           SizedBox(height: 16),
-                          
-                          // Password field
+
                           TextFormField(
                             controller: _passwordController,
                             obscureText: !_isPasswordVisible,
@@ -142,10 +131,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                               ),
                             ),
                           ),
-                          
                           SizedBox(height: 24),
-                          
-                          // Login button
+
                           SizedBox(
                             width: double.infinity,
                             height: 50,
@@ -158,7 +145,9 @@ class _UserLoginPageState extends State<UserLoginPage> {
                                 ),
                               ),
                               child: _isLoading
-                                  ? CircularProgressIndicator(color: Colors.white)
+                                  ? CircularProgressIndicator(
+                                      color: Colors.white,
+                                    )
                                   : Text(
                                       'Iniciar Sesión',
                                       style: TextStyle(
@@ -169,39 +158,8 @@ class _UserLoginPageState extends State<UserLoginPage> {
                                     ),
                             ),
                           ),
-                          
                           SizedBox(height: 16),
-                          
-                          // Demo info
-                          Container(
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.green.shade200,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline,
-                                  color: Colors.green.shade700,
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Demo: Cualquier email y contraseña funcionan',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green.shade700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+
                         ],
                       ),
                     ),
@@ -219,10 +177,10 @@ class _UserLoginPageState extends State<UserLoginPage> {
     setState(() {
       _isLoading = true;
     });
-    
+
     // Simulate API call
     await Future.delayed(Duration(seconds: 2));
-    
+
     // Navigate to user home
     Navigator.pushReplacement(
       context,

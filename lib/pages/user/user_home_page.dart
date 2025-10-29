@@ -14,21 +14,25 @@ class UserHomePage extends StatefulWidget {
 class _UserHomePageState extends State<UserHomePage> {
   int _currentIndex = 0;
 
-  final List<Widget> _tabs = [
-    DashboardTab(),
+  List<Widget> get _tabs => [
+    DashboardTab(
+      onTabChange: (index) {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+    ),
     ReportsTab(
       onOpenTicketChat: (ticketId) {
-        // Navegar a pantalla de chat del ticket
-        // Esta función se manejará desde el ReportsTab directamente
       },
       onCreateReport: () {
-        // Navegar a pantalla de crear reporte
-        // Esta función se manejará desde el ReportsTab directamente
       },
     ),
     NewsTab(),
     OthersTab(),
   ];
+
+
 
   @override
   Widget build(BuildContext context) {

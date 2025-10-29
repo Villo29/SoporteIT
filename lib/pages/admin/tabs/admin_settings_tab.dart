@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../services/auth_service.dart';
+import '../../login_page.dart';
 
 class AdminSettingsTab extends StatefulWidget {
   @override
@@ -137,6 +139,24 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
               ],
             ),
             
+            SizedBox(height: 24),
+            
+            // Account section
+            _buildSettingsSection(
+              'Cuenta',
+              [
+                _buildActionTile(
+                  'Cerrar Sesión',
+                  'Salir de la aplicación',
+                  Icons.logout,
+                  () {
+                    _showLogoutDialog(context);
+                  },
+                  isDestructive: true,
+                ),
+              ],
+            ),
+            
             SizedBox(height: 40),
             
             // Save button
@@ -148,7 +168,7 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
                   _saveSettings();
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
+                  backgroundColor: const Color(0xFF1C9985),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -201,7 +221,7 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
       subtitle: Text(subtitle),
       value: value,
       onChanged: onChanged,
-      activeColor: Colors.orange,
+      activeColor: const Color(0xFF1C9985),
     );
   }
 
@@ -368,7 +388,55 @@ class _AdminSettingsTabState extends State<AdminSettingsTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Configuración restablecida'),
-        backgroundColor: Colors.orange,
+        backgroundColor: const Color(0xFF1C9985),
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.logout, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Cerrar Sesión'),
+          ],
+        ),
+        content: Text(
+          '¿Estás seguro de que deseas cerrar sesión?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              
+              try {
+                await AuthService.logout();
+                
+                // Navegar al login
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => LoginPage()),
+                  (Route<dynamic> route) => false,
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error al cerrar sesión: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('Cerrar Sesión'),
+          ),
+        ],
       ),
     );
   }

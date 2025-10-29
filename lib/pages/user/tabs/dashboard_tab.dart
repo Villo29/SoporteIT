@@ -1,9 +1,132 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../create_report_page.dart';
+import '../../../services/auth_service.dart';
 
+class DashboardTab extends StatefulWidget {
+  final Function(int)? onTabChange;
+  
+  const DashboardTab({super.key, this.onTabChange});
 
-class DashboardTab extends StatelessWidget {
-  const DashboardTab({super.key});
+  @override
+  _DashboardTabState createState() => _DashboardTabState();
+}
+
+class _DashboardTabState extends State<DashboardTab> {
+  List<Map<String, dynamic>> _myTickets = [];
+  bool _isLoadingTickets = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserTickets();
+  }
+
+  Future<void> _loadUserTickets() async {
+    try {
+      setState(() {
+        _isLoadingTickets = true;
+      });
+
+      final token = await AuthService.getCurrentToken();
+      if (token == null) {
+        setState(() {
+          _isLoadingTickets = false;
+        });
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/tickets'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> ticketsData = json.decode(response.body);
+
+        setState(() {
+          _myTickets = ticketsData
+              .map((ticket) => _mapTicketFromApi(ticket))
+              .toList();
+          _isLoadingTickets = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingTickets = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingTickets = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapTicketFromApi(Map<String, dynamic> apiTicket) {
+    return {
+      'id': 'TK-${apiTicket['id']}',
+      'title': apiTicket['titulo'] ?? 'Sin título',
+      'status': _mapStatusFromApi(apiTicket['estado'] ?? 'abierto'),
+      'time': _formatTimeFromApi(apiTicket['created_at'] ?? ''),
+      'priority': _mapPriorityFromApi(apiTicket['prioridad'] ?? 'media'),
+    };
+  }
+
+  String _mapStatusFromApi(String apiStatus) {
+    switch (apiStatus.toLowerCase()) {
+      case 'abierto':
+        return 'Abierto';
+      case 'en_proceso':
+      case 'procesando':
+        return 'En progreso';
+      case 'cerrado':
+      case 'resuelto':
+        return 'Resuelto';
+      default:
+        return 'Abierto';
+    }
+  }
+
+  String _mapPriorityFromApi(String apiPriority) {
+    switch (apiPriority.toLowerCase()) {
+      case 'baja':
+      case 'bajo':
+        return 'Baja';
+      case 'media':
+      case 'medio':
+        return 'Media';
+      case 'alta':
+      case 'alto':
+        return 'Alta';
+      case 'critica':
+      case 'crítica':
+        return 'Crítica';
+      default:
+        return 'Media';
+    }
+  }
+
+  String _formatTimeFromApi(String isoDate) {
+    try {
+      final DateTime ticketDate = DateTime.parse(isoDate);
+      final DateTime now = DateTime.now();
+      final Duration difference = now.difference(ticketDate);
+
+      if (difference.inMinutes < 60) {
+        return 'hace ${difference.inMinutes} minutos';
+      } else if (difference.inHours < 24) {
+        return 'hace ${difference.inHours} horas';
+      } else {
+        return 'hace ${difference.inDays} días';
+      }
+    } catch (e) {
+      return 'Fecha inválida';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,30 +226,6 @@ class DashboardTab extends StatelessWidget {
   }
 
   Widget _buildMyReports() {
-    final myTickets = [
-      {
-        'id': 'TK-156',
-        'title': 'Mi computadora se reinicia sola',
-        'status': 'En progreso',
-        'time': 'hace 2 horas',
-        'priority': 'Media',
-      },
-      {
-        'id': 'TK-142',
-        'title': 'No puedo acceder a mi email',
-        'status': 'Resuelto',
-        'time': 'hace 1 día',
-        'priority': 'Alta',
-      },
-      {
-        'id': 'TK-138',
-        'title': 'Impresora no imprime',
-        'status': 'Abierto',
-        'time': 'hace 3 días',
-        'priority': 'Baja',
-      },
-    ];
-
     return Card(
       elevation: 2,
       child: Padding(
@@ -134,22 +233,105 @@ class DashboardTab extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Mis Reportes',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Mis Reportes',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                if (_isLoadingTickets)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Color(0xFF1C9985),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             SizedBox(height: 16),
-            Column(
-              children: myTickets.map((ticket) {
-                return _buildTicketCard(ticket);
-              }).toList(),
-            ),
+            _isLoadingTickets
+                ? Container(
+                    height: 100,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color(0xFF1C9985),
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Cargando reportes...',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : _myTickets.isEmpty
+                ? Container(
+                    height: 100,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.assignment_outlined,
+                            size: 32,
+                            color: Colors.grey[400],
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'No tienes reportes aún',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      ..._myTickets.take(3).map((ticket) {
+                        return _buildTicketCard(ticket);
+                      }).toList(),
+                      if (_myTickets.length > 3) ...[
+                        SizedBox(height: 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'y ${_myTickets.length - 3} más...',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
             SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: TextButton(
                 onPressed: () {
-                  // Ver todos los reportes
+                  // Navegar al tab de reportes (índice 1) usando el callback
+                  if (widget.onTabChange != null) {
+                    widget.onTabChange!(1);
+                  }
                 },
                 child: Text('Ver Todos Mis Reportes'),
               ),
@@ -160,33 +342,50 @@ class DashboardTab extends StatelessWidget {
     );
   }
 
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Abierto':
+        return Colors.red;
+      case 'En progreso':
+        return Colors.orange;
+      case 'Resuelto':
+        return Colors.green;
+      case 'Cerrado':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'Abierto':
+        return Icons.warning;
+      case 'En progreso':
+        return Icons.access_time;
+      case 'Resuelto':
+        return Icons.check_circle;
+      case 'Cerrado':
+        return Icons.lock;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  Color _getPriorityColor(String? priority) {
+    switch (priority?.toLowerCase()) {
+      case 'alta':
+        return Colors.red;
+      case 'media':
+        return Colors.orange;
+      case 'baja':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   Widget _buildTicketCard(Map<String, dynamic> ticket) {
-    Color getStatusColor(String status) {
-      switch (status) {
-        case 'Abierto':
-          return Colors.red;
-        case 'En progreso':
-          return Colors.orange;
-        case 'Resuelto':
-          return Colors.green;
-        default:
-          return Colors.grey;
-      }
-    }
-
-    IconData getStatusIcon(String status) {
-      switch (status) {
-        case 'Abierto':
-          return Icons.warning;
-        case 'En progreso':
-          return Icons.access_time;
-        case 'Resuelto':
-          return Icons.check_circle;
-        default:
-          return Icons.access_time;
-      }
-    }
-
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       elevation: 1,
@@ -195,8 +394,8 @@ class DashboardTab extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              getStatusIcon(ticket['status']),
-              color: getStatusColor(ticket['status']),
+              _getStatusIcon(ticket['status'] ?? 'Abierto'),
+              color: _getStatusColor(ticket['status'] ?? 'Abierto'),
               size: 20,
             ),
             SizedBox(width: 12),
@@ -207,7 +406,7 @@ class DashboardTab extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        ticket['id'],
+                        ticket['id'] ?? 'TK-000',
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -220,27 +419,55 @@ class DashboardTab extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: getStatusColor(
-                            ticket['status'],
+                          color: _getStatusColor(
+                            ticket['status'] ?? 'Abierto',
                           ).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          ticket['status'],
+                          ticket['status'] ?? 'Sin estado',
                           style: TextStyle(
                             fontSize: 12,
-                            color: getStatusColor(ticket['status']),
+                            color: _getStatusColor(
+                              ticket['status'] ?? 'Abierto',
+                            ),
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _getPriorityColor(
+                            ticket['priority'],
+                          ).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          ticket['priority'] ?? 'Normal',
+                          style: TextStyle(
+                            color: _getPriorityColor(ticket['priority']),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
                     ],
                   ),
                   SizedBox(height: 4),
-                  Text(ticket['title'], style: TextStyle(fontSize: 14)),
+                  Text(
+                    ticket['title'] ?? 'Sin título',
+                    style: TextStyle(fontSize: 14),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   SizedBox(height: 4),
                   Text(
-                    ticket['time'],
+                    ticket['time'] ?? 'Sin fecha',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
