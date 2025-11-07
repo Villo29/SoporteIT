@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
+import '../services/auth_service.dart';
 
 class TicketChatPage extends StatefulWidget {
   final String ticketId;
@@ -13,44 +17,295 @@ class _TicketChatPageState extends State<TicketChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  final List<Map<String, dynamic>> _messages = [
-    {
-      'id': '1',
-      'sender': 'support',
-      'content': 'Hemos recibido tu reporte sobre el problema con la computadora. Un técnico lo revisará pronto.',
-      'timestamp': '10:30 AM',
-      'type': 'message'
-    },
-    {
-      'id': '2',
-      'sender': 'support',
-      'content': 'Estado actualizado: En progreso',
-      'timestamp': '11:15 AM',
-      'type': 'status_update'
-    },
-    {
-      'id': '3',
-      'sender': 'support',
-      'content': 'Hola! Soy Carlos del equipo técnico. He visto tu reporte y me dirijo a tu oficina para revisar el problema. ¿Estarás disponible en los próximos 15 minutos?',
-      'timestamp': '11:45 AM',
-      'type': 'message'
-    },
-    {
-      'id': '4',
-      'sender': 'user',
-      'content': 'Sí, estaré aquí. Gracias por la pronta respuesta.',
-      'timestamp': '11:47 AM',
-      'type': 'message'
-    }
-  ];
+  List<Map<String, dynamic>> _messages = [];
+  WebSocketChannel? _webSocketChannel;
+  Map<String, dynamic>? _room;
+  Map<String, dynamic>? _ticketData;
+  bool _isLoadingMessages = true;
+  bool _isLoadingTicket = true;
+  bool _isConnected = false;
 
   @override
   void initState() {
     super.initState();
-    // Scroll al final de los mensajes cuando se carga la pantalla
+    _loadTicketData();
+    _loadChatRoom();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
     });
+  }
+
+  Future<void> _loadTicketData() async {
+    try {
+      setState(() {
+        _isLoadingTicket = true;
+      });
+
+      final token = await AuthService.getCurrentToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+
+      // Extraer el ID numérico del ticket (TK-9 -> 9)
+      final ticketNumericId = widget.ticketId.replaceFirst('TK-', '');
+      print('Cargando ticket ID: $ticketNumericId');
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/tickets/$ticketNumericId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        setState(() {
+          _ticketData = responseData;
+          _isLoadingTicket = false;
+        });
+
+      } else {
+        throw Exception(
+          'Error al cargar la información del ticket - Status: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+
+      setState(() {
+        _isLoadingTicket = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error al cargar el ticket. Por favor intenta de nuevo.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadChatRoom() async {
+    try {
+      final token = await AuthService.getCurrentToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+      final ticketNumericId = widget.ticketId.replaceFirst('TK-', '');
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> chatRooms = jsonDecode(response.body);
+
+        // Buscar la sala que corresponde a nuestro ticket
+        Map<String, dynamic>? matchingRoom;
+        for (var room in chatRooms) {
+          if (room['ticket_id'].toString() == ticketNumericId) {
+            matchingRoom = room;
+            break;
+          }
+        }
+
+        if (matchingRoom != null) {
+          setState(() {
+            _room = matchingRoom;
+          });
+
+          _loadChatMessages();
+        } else {
+          throw Exception('No se encontró una sala de chat para este ticket');
+        }
+      } else {
+        throw Exception(
+          'Error al cargar las salas de chat - Status: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error al cargar la sala de chat. Por favor intenta de nuevo.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _loadChatMessages() async {
+    try {
+      setState(() {
+        _isLoadingMessages = true;
+      });
+
+      final token = await AuthService.getCurrentToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+
+      // Verificar que tenemos la sala de chat
+      if (_room == null) {
+        throw Exception('No se ha cargado la sala de chat');
+      }
+
+      // Usar el room_id que ya obtuvimos
+      final roomId = _room!['id'];
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats/$roomId/messages?limit=50'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        List<dynamic> messagesData;
+
+        if (responseData is List) {
+          messagesData = responseData;
+        } else if (responseData is Map &&
+            responseData.containsKey('messages')) {
+          messagesData = responseData['messages'];
+        } else if (responseData is Map && responseData.containsKey('data')) {
+          messagesData = responseData['data'];
+        } else {
+          throw Exception(
+            'Estructura de respuesta no reconocida: ${responseData.keys}',
+          );
+        }
+
+        setState(() {
+          _messages = messagesData
+              .map((message) => _mapMessageFromApi(message))
+              .toList();
+          _isLoadingMessages = false;
+        });
+
+        _connectWebSocket(token);
+
+        _scrollToBottom();
+      } else {
+        throw Exception(
+          'Error al cargar los mensajes - Status: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+
+      setState(() {
+        _isLoadingMessages = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al cargar el chat. Por favor intenta de nuevo.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Map<String, dynamic> _mapMessageFromApi(Map<String, dynamic> apiMessage) {
+    return {
+      'id': apiMessage['id'].toString(),
+      'sender': apiMessage['sender_role'] == 'empleado' ? 'user' : 'support',
+      'content': apiMessage['content'],
+      'timestamp': _formatTimestamp(apiMessage['created_at']),
+      'type': 'message',
+    };
+  }
+
+  String _formatTimestamp(String isoDate) {
+    try {
+      final DateTime messageDate = DateTime.parse(isoDate);
+      final DateTime now = DateTime.now();
+      final Duration difference = now.difference(messageDate);
+
+      if (difference.inDays > 0) {
+        return '${messageDate.day}/${messageDate.month} ${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      } else {
+        return '${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (e) {
+      return 'Error de fecha';
+    }
+  }
+
+  void _connectWebSocket(String token) {
+    if (_room != null) {
+      try {
+        final roomId = _room!['id'];
+        final wsUrl = 'ws://127.0.0.1:8000/chats/ws/$roomId?token=$token';
+
+        _webSocketChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+        setState(() {
+          _isConnected = true;
+        });
+        _webSocketChannel!.stream.listen(
+          (data) {
+            try {
+              final messageData = jsonDecode(data);
+
+              if (messageData['type'] == 'message') {
+                final newMessage = _mapMessageFromApi(messageData);
+
+                if (mounted) {
+                  setState(() {
+                    _messages.add(newMessage);
+                  });
+
+                  _scrollToBottom();
+                }
+              }
+            } catch (e) {
+              print('Error al procesar mensaje WebSocket: $e');
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+          onDone: () {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isConnected = false;
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _webSocketChannel?.sink.close();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _scrollToBottom() {
@@ -63,44 +318,39 @@ class _TicketChatPageState extends State<TicketChatPage> {
     }
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
 
-    final newMessage = {
-      'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      'sender': 'user',
-      'content': _messageController.text.trim(),
-      'timestamp': _getCurrentTime(),
-      'type': 'message'
-    };
-
-    setState(() {
-      _messages.add(newMessage);
-    });
-
+    final messageContent = _messageController.text.trim();
     _messageController.clear();
-    _scrollToBottom();
 
-    // Simular respuesta automática del soporte
-    Future.delayed(Duration(seconds: 1), () {
-      final supportResponse = {
-        'id': (DateTime.now().millisecondsSinceEpoch + 1).toString(),
-        'sender': 'support',
-        'content': 'Recibido. Te responderemos pronto.',
-        'timestamp': _getCurrentTime(),
-        'type': 'message'
+    if (_room == null || !_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: No hay conexión al chat.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final messageData = {
+        'type': 'message',
+        'content': messageContent,
+        'room_id': _room!['id'],
       };
+      final jsonMessage = jsonEncode(messageData);
 
-      setState(() {
-        _messages.add(supportResponse);
-      });
-      _scrollToBottom();
-    });
-  }
-
-  String _getCurrentTime() {
-    final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      _webSocketChannel?.sink.add(jsonMessage);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al enviar mensaje. Por favor intenta de nuevo.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -114,33 +364,70 @@ class _TicketChatPageState extends State<TicketChatPage> {
         ),
         title: Column(
           children: [
-            Text(
-              'Ticket #${widget.ticketId}',
-              style: TextStyle(fontSize: 16),
-            ),
+            Text('Ticket #${widget.ticketId}', style: TextStyle(fontSize: 16)),
             SizedBox(height: 2),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.access_time, size: 12, color: Colors.orange),
-                  SizedBox(width: 4),
-                  Text(
-                    'En Progreso',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.access_time, size: 12, color: Colors.orange),
+                      SizedBox(width: 4),
+                      Text(
+                        'En Progreso',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 8),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _isConnected
+                        ? Colors.green.withOpacity(0.1)
+                        : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isConnected ? Colors.green : Colors.red,
                     ),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: _isConnected ? Colors.green : Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        _isConnected ? 'En línea' : 'Desconectado',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _isConnected ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -153,20 +440,41 @@ class _TicketChatPageState extends State<TicketChatPage> {
           // Información del ticket
           _buildTicketInfo(),
           SizedBox(height: 8),
-          
+
           // Lista de mensajes
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _buildMessage(message);
-              },
-            ),
+            child: _isLoadingMessages
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.blue,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Cargando conversación...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      return _buildMessage(message);
+                    },
+                  ),
           ),
-          
+
           // Input de mensaje
           _buildMessageInput(),
         ],
@@ -175,6 +483,70 @@ class _TicketChatPageState extends State<TicketChatPage> {
   }
 
   Widget _buildTicketInfo() {
+    if (_isLoadingTicket) {
+      return Card(
+        margin: EdgeInsets.all(16),
+        elevation: 2,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (_ticketData == null) {
+      return Card(
+        margin: EdgeInsets.all(16),
+        elevation: 2,
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Error al cargar la información del ticket',
+            style: TextStyle(color: Colors.red),
+          ),
+        ),
+      );
+    }
+
+    final priority = _ticketData!['prioridad']?.toString() ?? 'Media';
+    final title = _ticketData!['titulo']?.toString() ?? 'Sin título';
+    final description =
+        _ticketData!['descripcion_detallada']?.toString() ?? 'Sin descripción';
+
+    String formattedDate = 'Fecha desconocida';
+    if (_ticketData!['created_at'] != null) {
+      try {
+        final createdAt = DateTime.parse(_ticketData!['created_at']);
+        final now = DateTime.now();
+        final difference = now.difference(createdAt);
+
+        if (difference.inDays > 0) {
+          formattedDate =
+              'Creado: Hace ${difference.inDays} día${difference.inDays > 1 ? 's' : ''}';
+        } else if (difference.inHours > 0) {
+          formattedDate =
+              'Creado: Hace ${difference.inHours} hora${difference.inHours > 1 ? 's' : ''}';
+        } else {
+          formattedDate =
+              'Creado: Hace ${difference.inMinutes} minuto${difference.inMinutes > 1 ? 's' : ''}';
+        }
+      } catch (e) {
+        formattedDate = 'Fecha inválida';
+      }
+    }
+
+    // Configurar colores según prioridad
+    Color priorityColor = Colors.grey;
+    if (priority.toLowerCase() == 'alta' || priority.toLowerCase() == 'high') {
+      priorityColor = Colors.red;
+    } else if (priority.toLowerCase() == 'media' ||
+        priority.toLowerCase() == 'medium') {
+      priorityColor = Colors.orange;
+    } else if (priority.toLowerCase() == 'baja' ||
+        priority.toLowerCase() == 'low') {
+      priorityColor = Colors.green;
+    }
+
     return Card(
       margin: EdgeInsets.all(16),
       elevation: 2,
@@ -184,44 +556,37 @@ class _TicketChatPageState extends State<TicketChatPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Mi computadora se reinicia sola',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              title,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),
             Text(
-              'Estaba trabajando en Excel cuando de repente la pantalla se puso azul...',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              description,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
             SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Creado: Hace 2 horas',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
+                  formattedDate,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: priorityColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red),
+                    border: Border.all(color: priorityColor),
                   ),
                   child: Text(
-                    'Alta Prioridad',
+                    '${priority.toUpperCase()} PRIORIDAD',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.red,
+                      color: priorityColor,
                     ),
                   ),
                 ),
@@ -237,7 +602,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
     if (message['type'] == 'status_update') {
       return _buildStatusUpdate(message);
     }
-    
+
     return _buildChatMessage(message);
   }
 
@@ -255,10 +620,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
             ),
             child: Text(
               '${message['content']} • ${message['timestamp']}',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
           ),
         ],
@@ -268,11 +630,13 @@ class _TicketChatPageState extends State<TicketChatPage> {
 
   Widget _buildChatMessage(Map<String, dynamic> message) {
     final isUser = message['sender'] == 'user';
-    
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isUser) ...[
@@ -283,17 +647,15 @@ class _TicketChatPageState extends State<TicketChatPage> {
                 color: Colors.blue,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.support_agent,
-                color: Colors.white,
-                size: 16,
-              ),
+              child: Icon(Icons.support_agent, color: Colors.white, size: 16),
             ),
             SizedBox(width: 8),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -312,10 +674,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
                 SizedBox(height: 4),
                 Text(
                   message['timestamp'],
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -329,11 +688,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
                 color: Colors.green,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.person,
-                color: Colors.white,
-                size: 16,
-              ),
+              child: Icon(Icons.person, color: Colors.white, size: 16),
             ),
           ],
         ],
@@ -346,9 +701,7 @@ class _TicketChatPageState extends State<TicketChatPage> {
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey[300]!),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey[300]!)),
       ),
       child: Column(
         children: [
@@ -362,7 +715,10 @@ class _TicketChatPageState extends State<TicketChatPage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                   onSubmitted: (_) => _sendMessage(),
                 ),
@@ -385,20 +741,10 @@ class _TicketChatPageState extends State<TicketChatPage> {
           SizedBox(height: 8),
           Text(
             'Tiempo de respuesta promedio: 15 minutos',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 }

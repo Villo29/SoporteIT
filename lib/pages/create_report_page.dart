@@ -130,29 +130,15 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
-        String successMessage = 'Reporte enviado exitosamente';
+        
+        // Crear el ID del ticket
+        String ticketId = 'TK-000';
         if (responseData['id'] != null) {
-          successMessage += '\nNúmero de ticket: TK-${responseData['id']}';
+          ticketId = 'TK-${responseData['id']}';
         }
 
-        if (_selectedImages.isNotEmpty || _selectedFiles.isNotEmpty) {
-          successMessage +=
-              '\n\nArchivos adjuntos: ${_selectedImages.length} imágenes, ${_selectedFiles.length} documentos';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(successMessage),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
-
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pop(context, true);
-          }
-        });
+        // Mostrar modal de éxito
+        _showSuccessModal(ticketId);
       } else {
         final errorData = jsonDecode(response.body);
         String errorMessage = 'Error al enviar el reporte';
@@ -190,6 +176,133 @@ class _CreateReportPageState extends State<CreateReportPage> {
         });
       }
     }
+  }
+
+  void _showSuccessModal(String ticketId) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icono de éxito
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 50,
+                  ),
+                ),
+                SizedBox(height: 24),
+                
+                // Título
+                Text(
+                  '¡Reporte Enviado!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 16),
+                
+                // Mensaje principal
+                Text(
+                  'Tu reporte ha sido enviado exitosamente.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[700],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 12),
+                
+                // Número de ticket
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.confirmation_number,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Número de Ticket: $ticketId',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 20),
+                
+                // Información adicional
+                Text(
+                  'Nuestro equipo de soporte técnico revisará tu reporte y te contactará pronto.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 24),
+                
+                // Botón cerrar
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pop(); // Cerrar modal
+                      Navigator.of(context).pop(true); // Cerrar página de reporte
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Entendido',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _takePicture() async {
@@ -760,6 +873,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
                     margin: EdgeInsets.only(bottom: 8),
                     padding: EdgeInsets.all(12),
                     decoration: BoxDecoration(
+                      // ignore: deprecated_member_use
                       color: Colors.green.withOpacity(0.1),
                       border: Border.all(color: Colors.green.withOpacity(0.3)),
                       borderRadius: BorderRadius.circular(8),
@@ -900,17 +1014,17 @@ class _CreateReportPageState extends State<CreateReportPage> {
             );
           },
         ),
-        SizedBox(height: 8),
-        Text(
-          _isSubmitting
-              ? 'Enviando reporte al servidor...'
-              : 'Recibirás una confirmación por email',
-          style: TextStyle(
-            fontSize: 14,
-            color: _isSubmitting ? Colors.blue : Colors.grey[600],
-            fontStyle: _isSubmitting ? FontStyle.italic : FontStyle.normal,
+        if (_isSubmitting) ...[
+          SizedBox(height: 8),
+          Text(
+            'Enviando reporte al servidor...',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.blue,
+              fontStyle: FontStyle.italic,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }

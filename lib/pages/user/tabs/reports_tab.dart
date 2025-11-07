@@ -53,7 +53,6 @@ class _ReportsTabState extends State<ReportsTab> {
 
       if (response.statusCode == 200) {
         final List<dynamic> reportsData = json.decode(response.body);
-
         setState(() {
           _reports = reportsData
               .map((report) => _mapReportFromApi(report))
@@ -76,7 +75,7 @@ class _ReportsTabState extends State<ReportsTab> {
     return {
       'id': 'TK-${apiReport['id']}',
       'title': apiReport['titulo'] ?? 'Sin título',
-      'description': apiReport['descripcion'] ?? 'Sin descripción',
+      'description': apiReport['descripcion_detallada'] ?? 'Sin descripción',
       'status': _mapStatusFromApi(apiReport['estado'] ?? 'abierto'),
       'date': _formatDateFromApi(apiReport['created_at'] ?? ''),
       'priority': _mapPriorityFromApi(apiReport['prioridad'] ?? 'media'),

@@ -110,10 +110,6 @@ class _SplashPageState extends State<SplashPage> {
 
             const SizedBox(height: 16),
 
-            Text(
-              'Verificando sesión...',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
           ],
         ),
       ),
