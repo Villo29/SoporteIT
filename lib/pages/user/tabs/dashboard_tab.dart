@@ -328,7 +328,6 @@ class _DashboardTabState extends State<DashboardTab> {
               width: double.infinity,
               child: TextButton(
                 onPressed: () {
-                  // Navegar al tab de reportes (índice 1) usando el callback
                   if (widget.onTabChange != null) {
                     widget.onTabChange!(1);
                   }

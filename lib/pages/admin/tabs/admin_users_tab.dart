@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../../services/auth_service.dart';
 
 class AdminUsersTab extends StatefulWidget {
   const AdminUsersTab({super.key, this.onOpenUserDetail});
-  final void Function(String userId)? onOpenUserDetail; // opcional para navegación
+  final void Function(String userId)?
+  onOpenUserDetail; // opcional para navegación
 
   @override
   State<AdminUsersTab> createState() => _AdminUsersTabState();
@@ -13,82 +16,182 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
   String searchTerm = '';
   String filterRole = 'all';
 
-  // Mock user data (idéntico a tu ejemplo)
-  final List<Map<String, dynamic>> users = [
-    {
-      'id': 'USR-001',
-      'name': 'Juan Pérez',
-      'email': 'juan.perez@empresa.com',
-      'phone': '+58 412-1234567',
-      'department': 'Ventas',
-      'role': 'user',
-      'status': 'active',
-      'lastLogin': '2024-01-15 16:30',
-      'createdAt': '2023-06-15',
-      'ticketsCreated': 12,
-      'ticketsResolved': 8,
-    },
-    {
-      'id': 'USR-002',
-      'name': 'María García',
-      'email': 'maria.garcia@empresa.com',
-      'phone': '+58 424-2345678',
-      'department': 'Contabilidad',
-      'role': 'user',
-      'status': 'active',
-      'lastLogin': '2024-01-15 14:45',
-      'createdAt': '2023-03-20',
-      'ticketsCreated': 8,
-      'ticketsResolved': 6,
-    },
-    {
-      'id': 'USR-003',
-      'name': 'Carlos López',
-      'email': 'carlos.lopez@empresa.com',
-      'phone': '+58 416-3456789',
-      'department': 'Marketing',
-      'role': 'user',
-      'status': 'inactive',
-      'lastLogin': '2024-01-10 09:20',
-      'createdAt': '2023-08-10',
-      'ticketsCreated': 5,
-      'ticketsResolved': 4,
-    },
-    {
-      'id': 'USR-004',
-      'name': 'Ana García',
-      'email': 'ana.garcia@empresa.com',
-      'phone': '+58 414-4567890',
-      'department': 'IT',
-      'role': 'admin',
-      'status': 'active',
-      'lastLogin': '2024-01-15 17:15',
-      'createdAt': '2022-11-05',
-      'ticketsCreated': 3,
-      'ticketsResolved': 45,
-    },
-    {
-      'id': 'USR-005',
-      'name': 'Luis Torres',
-      'email': 'luis.torres@empresa.com',
-      'phone': '+58 426-5678901',
-      'department': 'IT',
-      'role': 'support',
-      'status': 'active',
-      'lastLogin': '2024-01-15 16:50',
-      'createdAt': '2023-01-12',
-      'ticketsCreated': 2,
-      'ticketsResolved': 38,
-    },
-  ];
+  List<Map<String, dynamic>> users = [];
+  bool isLoading = true;
+  bool hasError = false;
+  String errorMessage = '';
 
-  // ────────────────────────────────────────────────────────────
-  // Helpers visuales (colores/labels)
-  // ────────────────────────────────────────────────────────────
+  @override
+  void initState() {
+    super.initState();
+    _loadUsers();
+  }
+
+  Future<Map<String, dynamic>> _createEmployee({
+    required String nombre,
+    required String apellido,
+    required String area,
+    required String cargo,
+    required String fechaNacimiento,
+    required String correo,
+    required String password,
+  }) async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/empleados/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'nombre': nombre,
+          'apellido': apellido,
+          'area': area,
+          'cargo': cargo,
+          'fecha_nacimiento': fechaNacimiento,
+          'correo': correo,
+          'password': password,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = json.decode(response.body);
+        if (responseData['ok'] == true) {
+          return responseData;
+        } else {
+          throw Exception('Error en la respuesta del servidor');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(
+          'Error ${response.statusCode}: ${errorData['message'] ?? 'Error desconocido'}',
+        );
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Widget _buildTextFormField({
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    required void Function(String?) onSaved,
+    required String? Function(String?) validator,
+  }) {
+    return TextFormField(
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      onSaved: onSaved,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF1C9985)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF1C9985), width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red),
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadUsers() async {
+    if (!mounted) return;
+    try {
+      final headers = await AuthService.getAuthHeaders();
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/empleados'),
+        headers: headers,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+
+        if (mounted) {
+          setState(() {
+            // Mapear datos del API a formato esperado por la UI
+            users = data
+                .map((employee) => _mapApiEmployeeToUI(employee))
+                .toList();
+            isLoading = false;
+            hasError = false;
+          });
+        }
+
+        print('✅ [AdminUsers] Empleados cargados: ${users.length}');
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ [AdminUsers] Error: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = true;
+          errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  Map<String, dynamic> _mapApiEmployeeToUI(Map<String, dynamic> apiEmployee) {
+    return {
+      'id': 'EMP-${apiEmployee['id_empleado']?.toString() ?? 'N/A'}',
+      'name': '${apiEmployee['nombre'] ?? ''} ${apiEmployee['apellido'] ?? ''}'
+          .trim(),
+      'email': apiEmployee['correo'] ?? 'Sin email',
+      'phone': 'N/A',
+      'department': apiEmployee['area'] ?? 'Sin área',
+      'role': 'empleado',
+      'status': 'active',
+      'lastLogin': 'N/A',
+      'createdAt': _formatDate(apiEmployee['fecha_nacimiento']),
+      'ticketsCreated': 0,
+      'ticketsResolved': 0,
+      'position': apiEmployee['cargo'] ?? 'Sin cargo',
+      'birthDate': _formatDate(apiEmployee['fecha_nacimiento']),
+      // Excluimos intencionalmente 'password' por seguridad
+    };
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null) return 'N/A';
+
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
   Color roleColor(String role) {
     switch (role) {
       case 'admin':
-        return Colors.red; // destructivo
+        return Colors.red;
       case 'support':
         return const Color(0xFF1C9985); // color del tema
       case 'user':
@@ -148,7 +251,8 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
   List<Map<String, dynamic>> get filteredUsers {
     return users.where((u) {
       final q = searchTerm.toLowerCase();
-      final matchesSearch = u['name'].toString().toLowerCase().contains(q) ||
+      final matchesSearch =
+          u['name'].toString().toLowerCase().contains(q) ||
           u['email'].toString().toLowerCase().contains(q) ||
           u['department'].toString().toLowerCase().contains(q);
       final matchesRole = filterRole == 'all' || u['role'] == filterRole;
@@ -156,58 +260,84 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
     }).toList();
   }
 
-  // ────────────────────────────────────────────────────────────
-  // Diálogo de creación de usuario (mock)
-  // ────────────────────────────────────────────────────────────
   Future<void> _openCreateUserDialog() async {
     final formKey = GlobalKey<FormState>();
-    String name = '';
-    String email = '';
-    String phone = '';
-    String department = '';
-    String role = 'user';
+    String nombre = '';
+    String apellido = '';
+    String correo = '';
+    String area = '';
+    String cargo = '';
+    String fechaNacimiento = '';
+    String password = '';
 
     await showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Crear Nuevo Usuario'),
+          title: const Text('Crear Nuevo Empleado'),
           content: Form(
             key: formKey,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
-                    decoration: const InputDecoration(labelText: 'Nombre Completo'),
-                    onSaved: (v) => name = v?.trim() ?? '',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                  _buildTextFormField(
+                    label: 'Nombre',
+                    icon: Icons.badge,
+                    onSaved: (v) => nombre = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),
+                  const SizedBox(height: 16),
+                  _buildTextFormField(
+                    label: 'Apellido',
+                    icon: Icons.badge_outlined,
+                    onSaved: (v) => apellido = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
+                  ),
+                  const SizedBox(height: 16),
                   TextFormField(
                     decoration: const InputDecoration(labelText: 'Email'),
                     keyboardType: TextInputType.emailAddress,
-                    onSaved: (v) => email = v?.trim() ?? '',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                    onSaved: (v) => correo = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),
                   TextFormField(
-                    decoration: const InputDecoration(labelText: 'Teléfono'),
-                    onSaved: (v) => phone = v?.trim() ?? '',
+                    decoration: const InputDecoration(labelText: 'Área'),
+                    onSaved: (v) => area = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),
                   TextFormField(
-                    decoration: const InputDecoration(labelText: 'Departamento'),
-                    onSaved: (v) => department = v?.trim() ?? '',
-                    validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                    decoration: const InputDecoration(labelText: 'Cargo'),
+                    onSaved: (v) => cargo = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: role,
-                    items: const [
-                      DropdownMenuItem(value: 'user', child: Text('Usuario')),
-                      DropdownMenuItem(value: 'support', child: Text('Soporte')),
-                      DropdownMenuItem(value: 'admin', child: Text('Administrador')),
-                    ],
-                    onChanged: (v) => role = v ?? 'user',
-                    decoration: const InputDecoration(labelText: 'Rol'),
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Fecha de Nacimiento (YYYY-MM-DD)',
+                      hintText: '1999-02-11',
+                    ),
+                    onSaved: (v) => fechaNacimiento = v?.trim() ?? '',
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Requerido';
+                      try {
+                        DateTime.parse(v);
+                        return null;
+                      } catch (e) {
+                        return 'Formato inválido (YYYY-MM-DD)';
+                      }
+                    },
+                  ),
+                  TextFormField(
+                    decoration: const InputDecoration(labelText: 'Contraseña'),
+                    obscureText: true,
+                    onSaved: (v) => password = v?.trim() ?? '',
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Requerido' : null,
                   ),
                 ],
               ),
@@ -216,26 +346,83 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
+            const SizedBox(width: 8),
             FilledButton(
-              onPressed: () {
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1C9985),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
                 if (formKey.currentState?.validate() ?? false) {
                   formKey.currentState?.save();
-                  // Aquí iría la llamada al backend
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Usuario creado (mock)')),
-                  );
+
+                  try {
+                    // Mostrar loading
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF1C9985),
+                        ),
+                      ),
+                    );
+
+                    // Crear empleado y obtener respuesta
+                    final responseData = await _createEmployee(
+                      nombre: nombre,
+                      apellido: apellido,
+                      area: area,
+                      cargo: cargo,
+                      fechaNacimiento: fechaNacimiento,
+                      correo: correo,
+                      password: password,
+                    );
+                    if (mounted) Navigator.pop(context);
+                    if (mounted) Navigator.pop(context);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Empleado creado exitosamente (ID: ${responseData['id_empleado']})',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+
+                    // Recargar lista
+                    _loadUsers();
+                  } catch (e) {
+                    // Cerrar loading
+                    if (mounted) Navigator.pop(context);
+
+                    // Mostrar error
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('❌ Error: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
                 }
               },
-              child: const Text('Crear Usuario'),
+              child: const Text('Crear Empleado'),
             ),
           ],
         );
       },
     );
   }
+
   void handleChangeUserRole(String userId, String newRole) {
     debugPrint('Changing user $userId role to $newRole');
   }
@@ -246,190 +433,246 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF1C9985)),
+            SizedBox(height: 16),
+            Text('Cargando empleados...'),
+          ],
+        ),
+      );
+    }
+
+    if (hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              'Error al cargar empleados',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadUsers,
+              child: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      );
+    }
+
     final total = users.length;
     final activos = users.where((u) => u['status'] == 'active').length;
-    final admins = users.where((u) => u['role'] == 'admin').length;
-    final soporte = users.where((u) => u['role'] == 'support').length;
+    final inactivos = total - activos;
+    final sistemas = users
+        .where(
+          (u) =>
+              u['area']?.toString().toLowerCase().contains('sistema') ?? false,
+        )
+        .length;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Header + botón nuevo usuario - Responsive
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 500;
-            
-            if (isMobile) {
-              // Layout vertical para móvil
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Gestión de Usuarios',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text('Administra los usuarios y sus permisos en el sistema',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: Colors.grey[600])),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _openCreateUserDialog,
-                      icon: const Icon(Icons.person_add_alt_1),
-                      label: const Text('Nuevo Usuario'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1C9985),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+    return RefreshIndicator(
+      onRefresh: _loadUsers,
+      color: const Color(0xFF1C9985),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Header + botón nuevo usuario - Responsive
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 500;
+
+              if (isMobile) {
+                // Layout vertical para móvil
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Gestión de Usuarios',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Administra los usuarios y sus permisos en el sistema',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _openCreateUserDialog,
+                        icon: const Icon(Icons.person_add_alt_1),
+                        label: const Text('Nuevo Usuario'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF1C9985),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Gestión de Usuarios',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Administra los usuarios y sus permisos en el sistema',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  FilledButton.icon(
+                    onPressed: _openCreateUserDialog,
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('Nuevo Usuario'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1C9985),
+                      foregroundColor: Colors.white,
                     ),
                   ),
                 ],
               );
-            }
-            
-            // Layout horizontal para escritorio
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Gestión de Usuarios',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      Text('Administra los usuarios y sus permisos en el sistema',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(color: Colors.grey[600])),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                FilledButton.icon(
-                  onPressed: _openCreateUserDialog,
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Nuevo Usuario'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1C9985),
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        // Búsqueda y filtro
-        Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.grey[300]!),
+            },
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Search
-                TextField(
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Buscar por nombre, email o departamento...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onChanged: (v) => setState(() => searchTerm = v),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: filterRole,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Todos los roles')),
-                          DropdownMenuItem(value: 'admin', child: Text('Administradores')),
-                          DropdownMenuItem(value: 'support', child: Text('Soporte')),
-                          DropdownMenuItem(value: 'user', child: Text('Usuarios')),
-                        ],
-                        onChanged: (v) => setState(() => filterRole = v ?? 'all'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
 
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-        // Resumen - Responsive
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 600;
-            final crossAxisCount = isMobile ? 2 : 4;
-            
-            return GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: isMobile ? 1.6 : 1.4,
-              ),
-              children: [
-                _SummaryCard(title: 'Total', value: '$total'),
-                _SummaryCard(title: 'Activos', value: '$activos', valueColor: Colors.green),
-                _SummaryCard(title: 'Admins', value: '$admins', valueColor: Colors.red),
-                _SummaryCard(title: 'Soporte', value: '$soporte', valueColor: const Color(0xFF1C9985)),
-              ],
-            );
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        // Lista de usuarios
-        if (filteredUsers.isEmpty)
+          // Búsqueda y filtro
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: Colors.grey[300]!),
             ),
-            child: const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text('No se encontraron usuarios que coincidan con los filtros.'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Search
+                  TextField(
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Buscar por nombre, email o departamento...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onChanged: (v) => setState(() => searchTerm = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
             ),
-          )
-        else
-          ...filteredUsers.map((u) => _UserCard(
+          ),
+
+          const SizedBox(height: 16),
+
+          // Resumen - Responsive
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+              final crossAxisCount = isMobile ? 2 : 4;
+
+              return GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: isMobile ? 1.8 : 1.6,
+                ),
+                children: [
+                  _EnhancedSummaryCard(
+                    title: 'Total Empleados',
+                    value: '$total',
+                    icon: Icons.people,
+                    color: const Color(0xFF1C9985),
+                    backgroundColor: const Color(0xFF1C9985).withOpacity(0.1),
+                  ),
+                  _EnhancedSummaryCard(
+                    title: 'Activos',
+                    value: '$activos',
+                    icon: Icons.check_circle,
+                    color: Colors.green,
+                    backgroundColor: Colors.green.withOpacity(0.1),
+                  ),
+                  _EnhancedSummaryCard(
+                    title: 'Inactivos',
+                    value: '$inactivos',
+                    icon: Icons.cancel,
+                    color: Colors.orange,
+                    backgroundColor: Colors.orange.withOpacity(0.1),
+                  ),
+                  _EnhancedSummaryCard(
+                    title: 'Área IT',
+                    value: '$sistemas',
+                    icon: Icons.computer,
+                    color: Colors.blue,
+                    backgroundColor: Colors.blue.withOpacity(0.1),
+                  ),
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // Lista de usuarios
+          if (filteredUsers.isEmpty)
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'No se encontraron usuarios que coincidan con los filtros.',
+                  ),
+                ),
+              ),
+            )
+          else
+            ...filteredUsers.map(
+              (u) => _UserCard(
                 data: u,
                 initials: _initialsFrom(u['name'] as String),
                 roleColor: roleColor,
@@ -437,46 +680,77 @@ class _AdminUsersTabState extends State<AdminUsersTab> {
                 statusColor: statusColor,
                 statusLabel: statusLabel,
                 onOpen: () => widget.onOpenUserDetail?.call(u['id'] as String),
-                onChangeRole: (newRole) => handleChangeUserRole(u['id'] as String, newRole),
+                onChangeRole: (newRole) =>
+                    handleChangeUserRole(u['id'] as String, newRole),
                 onToggleStatus: () => handleToggleUserStatus(u['id'] as String),
-              )),
-      ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.title, required this.value, this.valueColor});
+class _EnhancedSummaryCard extends StatelessWidget {
+  const _EnhancedSummaryCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+    required this.backgroundColor,
+  });
+
   final String title;
   final String value;
-  final Color? valueColor;
+  final IconData icon;
+  final Color color;
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey[300]!),
+        side: BorderSide(color: Colors.grey[200]!),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [backgroundColor, backgroundColor.withOpacity(0.5)],
+          ),
+        ),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: Icon(icon, color: color, size: 24),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 12),
             Text(
               value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: valueColor ?? const Color(0xFF1C9985),
-                  ),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
@@ -518,7 +792,8 @@ class _UserCard extends StatelessWidget {
     final String status = data['status'];
     final int created = data['ticketsCreated'];
     final int resolved = data['ticketsResolved'];
-    final DateTime last = DateTime.tryParse(data['lastLogin']) ?? DateTime.now();
+    final DateTime last =
+        DateTime.tryParse(data['lastLogin']) ?? DateTime.now();
     final String lastAccess = last.toLocal().toString().split(' ').first;
 
     return Card(
@@ -532,7 +807,7 @@ class _UserCard extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isMobile = constraints.maxWidth < 500;
-            
+
             if (isMobile) {
               // Mobile layout: vertical stacking
               return Column(
@@ -547,7 +822,7 @@ class _UserCard extends StatelessWidget {
                         child: Text(
                           initials,
                           style: const TextStyle(
-                            color: Colors.white, 
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -559,17 +834,22 @@ class _UserCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              name, 
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              name,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 4),
                             Wrap(
                               spacing: 6,
                               children: [
-                                _Badge(label: roleLabel(role), color: roleColor(role)),
-                                _Badge(label: statusLabel(status), color: statusColor(status)),
+                                _Badge(
+                                  label: roleLabel(role),
+                                  color: roleColor(role),
+                                ),
+                                _Badge(
+                                  label: statusLabel(status),
+                                  color: statusColor(status),
+                                ),
                               ],
                             ),
                           ],
@@ -591,47 +871,71 @@ class _UserCard extends StatelessWidget {
                           }
                         },
                         itemBuilder: (context) => const [
-                          PopupMenuItem(value: 'perfil', child: Text('Ver Perfil')),
-                          PopupMenuItem(value: 'rolAdmin', child: Text('Cambiar Rol')),
-                          PopupMenuItem(value: 'toggle', child: Text('Activar/Desactivar')),
+                          PopupMenuItem(
+                            value: 'perfil',
+                            child: Text('Ver Perfil'),
+                          ),
+                          PopupMenuItem(
+                            value: 'toggle',
+                            child: Text('Activar/Desactivar'),
+                          ),
                         ],
                       ),
                     ],
                   ),
-                  
                   const SizedBox(height: 12),
-                  
-                  // Contact info
                   DefaultTextStyle(
-                    style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall!.copyWith(color: Colors.grey[600]),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(children: [
-                          const Icon(Icons.mail_outline, size: 14),
-                          const SizedBox(width: 4),
-                          Flexible(child: Text(email)),
-                        ]),
+                        Row(
+                          children: [
+                            const Icon(Icons.mail_outline, size: 14),
+                            const SizedBox(width: 4),
+                            Flexible(child: Text(email)),
+                          ],
+                        ),
                         const SizedBox(height: 4),
-                        Row(children: [
-                          const Icon(Icons.phone, size: 14),
-                          const SizedBox(width: 4),
-                          Text(phone),
-                        ]),
+                        Row(
+                          children: [
+                            const Icon(Icons.phone, size: 14),
+                            const SizedBox(width: 4),
+                            Text(phone),
+                          ],
+                        ),
                         const SizedBox(height: 4),
-                        Row(children: [
-                          const Icon(Icons.business, size: 14),
-                          const SizedBox(width: 4),
-                          Text(department),
-                        ]),
+                        Row(
+                          children: [
+                            const Icon(Icons.business, size: 14),
+                            const SizedBox(width: 4),
+                            Text(department),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.work, size: 14),
+                            const SizedBox(width: 4),
+                            Text(data['position'] ?? 'Sin cargo'),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.cake, size: 14),
+                            const SizedBox(width: 4),
+                            Text(data['birthDate'] ?? 'N/A'),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Stats
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -639,49 +943,48 @@ class _UserCard extends StatelessWidget {
                       Column(
                         children: [
                           Text(
-                            '$created', 
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1C9985),
-                            ),
+                            '$created',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF1C9985),
+                                ),
                           ),
                           Text(
-                            'Creados', 
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                            'Creados',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: Colors.grey[600]),
                           ),
                         ],
                       ),
                       Column(
                         children: [
                           Text(
-                            '$resolved', 
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green,
-                            ),
+                            '$resolved',
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green,
+                                ),
                           ),
                           Text(
-                            'Resueltos', 
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                            'Resueltos',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: Colors.grey[600]),
                           ),
                         ],
                       ),
                       Column(
                         children: [
                           Icon(
-                            Icons.calendar_today_outlined, 
-                            size: 16, 
+                            Icons.calendar_today_outlined,
+                            size: 16,
                             color: Colors.grey[600],
                           ),
                           Text(
-                            lastAccess, 
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+                            lastAccess,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: Colors.grey[600]),
                           ),
                         ],
                       ),
@@ -690,7 +993,7 @@ class _UserCard extends StatelessWidget {
                 ],
               );
             }
-            
+
             // Desktop layout: original horizontal
             return Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -706,7 +1009,7 @@ class _UserCard extends StatelessWidget {
                         child: Text(
                           initials,
                           style: const TextStyle(
-                            color: Colors.white, 
+                            color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -719,44 +1022,69 @@ class _UserCard extends StatelessWidget {
                             Wrap(
                               children: [
                                 Text(
-                                  name, 
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  name,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(width: 8),
-                                _Badge(label: roleLabel(role), color: roleColor(role)),
+                                _Badge(
+                                  label: roleLabel(role),
+                                  color: roleColor(role),
+                                ),
                                 const SizedBox(width: 6),
-                                _Badge(label: statusLabel(status), color: statusColor(status)),
+                                _Badge(
+                                  label: statusLabel(status),
+                                  color: statusColor(status),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 6),
                             DefaultTextStyle(
-                              style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                                color: Colors.grey[600],
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall!
+                                  .copyWith(color: Colors.grey[600]),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Wrap(children: [
-                                    const Icon(Icons.mail_outline, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(email),
-                                    const SizedBox(width: 12),
-                                    const Icon(Icons.phone, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(phone),
-                                  ]),
+                                  Wrap(
+                                    children: [
+                                      const Icon(Icons.mail_outline, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(email),
+                                      const SizedBox(width: 12),
+                                      const Icon(Icons.phone, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(phone),
+                                    ],
+                                  ),
                                   const SizedBox(height: 4),
-                                  Wrap(children: [
-                                    Text(department),
-                                    const SizedBox(width: 8),
-                                    const Text('•'),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.calendar_today_outlined, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text('Último acceso: $lastAccess'),
-                                  ]),
+                                  Wrap(
+                                    children: [
+                                      Text(department),
+                                      const SizedBox(width: 8),
+                                      const Text('•'),
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.work, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(data['position'] ?? 'Sin cargo'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    children: [
+                                      const Icon(Icons.cake, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Nacimiento: ${data['birthDate'] ?? 'N/A'}',
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Icon(
+                                        Icons.calendar_today_outlined,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text('Último acceso: $lastAccess'),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -773,16 +1101,14 @@ class _UserCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          '$created', 
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          '$created',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          'Creados', 
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
+                          'Creados',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: Colors.grey[600]),
                         ),
                       ],
                     ),
@@ -791,16 +1117,14 @@ class _UserCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          '$resolved', 
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          '$resolved',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          'Resueltos', 
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
+                          'Resueltos',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: Colors.grey[600]),
                         ),
                       ],
                     ),
@@ -821,9 +1145,14 @@ class _UserCard extends StatelessWidget {
                         }
                       },
                       itemBuilder: (context) => const [
-                        PopupMenuItem(value: 'perfil', child: Text('Ver Perfil')),
-                        PopupMenuItem(value: 'rolAdmin', child: Text('Cambiar Rol')),
-                        PopupMenuItem(value: 'toggle', child: Text('Activar/Desactivar')),
+                        PopupMenuItem(
+                          value: 'perfil',
+                          child: Text('Ver Perfil'),
+                        ),
+                        PopupMenuItem(
+                          value: 'toggle',
+                          child: Text('Activar/Desactivar'),
+                        ),
                       ],
                     ),
                   ],

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'tabs/admin_tickets_tab.dart';
 import 'tabs/admin_users_tab.dart';
 import 'tabs/admin_analytics_tab.dart';
 import 'tabs/admin_settings_tab.dart';
+import '../../services/auth_service.dart';
 enum TabType { dashboard, tickets, users, noticias, settings }
 enum ScreenType { main, ticketDetail, userDetail }
 
@@ -44,7 +47,9 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
   Widget _renderContent() {
     switch (activeTab) {
       case TabType.dashboard:
-        return const AdminDashboardTab();
+        return AdminDashboardTab(onNavigateToTab: (tab) {
+          setState(() => activeTab = tab);
+        });
       case TabType.tickets:
         return AdminTicketsTab(onOpenTicketDetail: handleOpenTicketDetail);
       case TabType.users:
@@ -158,78 +163,195 @@ class _BottomNav extends StatelessWidget {
   }
 }
 
-class AdminDashboardTab extends StatelessWidget {
-  const AdminDashboardTab({super.key});
+class AdminDashboardTab extends StatefulWidget {
+  const AdminDashboardTab({super.key, this.onNavigateToTab});
+  
+  final void Function(TabType)? onNavigateToTab;
+
+  @override
+  State<AdminDashboardTab> createState() => _AdminDashboardTabState();
+}
+
+class _AdminDashboardTabState extends State<AdminDashboardTab> {
+  List<Map<String, dynamic>> tickets = [];
+  bool isLoading = true;
+  bool hasError = false;
+  String errorMessage = '';
+
+  // Estadísticas calculadas
+  int get totalTickets => tickets.length;
+  int get activeTickets => tickets.where((t) => t['estado'] != 'resuelto').length;
+  int get resolvedToday => tickets.where((t) => 
+    t['estado'] == 'resuelto' && _isToday(t['fecha_creacion'])).length;
+  
+  // Tickets recientes (primeros 3)
+  List<Map<String, dynamic>> get recentTickets => 
+    tickets.take(3).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTickets();
+  }
+
+  bool _isToday(String? dateString) {
+    if (dateString == null) return false;
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      return date.year == now.year &&
+             date.month == now.month &&
+             date.day == now.day;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> _loadTickets() async {
+    if (!mounted) return;
+    
+    try {
+      print('🔄 [AdminDashboard] Cargando tickets...');
+      
+      final headers = await AuthService.getAuthHeaders();
+      print('📤 [AdminDashboard] Headers: $headers');
+      
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/tickets'),
+        headers: headers,
+      );
+      
+      print('📥 [AdminDashboard] Status: ${response.statusCode}');
+      print('📥 [AdminDashboard] Response: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        
+        if (mounted) {
+          setState(() {
+            tickets = data.map((ticket) => ticket as Map<String, dynamic>).toList();
+            isLoading = false;
+            hasError = false;
+          });
+        }
+        
+        print('✅ [AdminDashboard] Tickets cargados: ${tickets.length}');
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ [AdminDashboard] Error: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = true;
+          errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  String _getPriorityLabel(String? priority) {
+    switch (priority?.toLowerCase()) {
+      case 'critica':
+        return 'Crítica';
+      case 'alta':
+        return 'Alta';
+      case 'media':
+        return 'Media';
+      case 'baja':
+        return 'Baja';
+      default:
+        return priority ?? 'N/A';
+    }
+  }
+
+  String _getStatusLabel(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'abierto':
+        return 'Abierto';
+      case 'en_proceso':
+        return 'En Proceso';
+      case 'pendiente':
+        return 'Pendiente';
+      case 'resuelto':
+        return 'Resuelto';
+      case 'cerrado':
+        return 'Cerrado';
+      default:
+        return status ?? 'N/A';
+    }
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null) return 'N/A';
+    
+    try {
+      final date = DateTime.parse(dateString);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+      
+      if (difference.inMinutes < 60) {
+        return '${difference.inMinutes}m';
+      } else if (difference.inHours < 24) {
+        return '${difference.inHours}h';
+      } else if (difference.inDays == 1) {
+        return 'Ayer';
+      } else if (difference.inDays < 7) {
+        return '${difference.inDays}d';
+      } else {
+        return '${date.day}/${date.month}';
+      }
+    } catch (e) {
+      return 'N/A';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    const totalTickets = 147;
-    const activeTickets = 23;
-    const resolvedToday = 12;
+    // Valores por defecto para métricas
     const totalUsers = 89;
     const avgResolutionTime = '2.4h';
     const satisfactionRate = 94;
 
-    final recentTickets = [
-      (
-        id: 'TK-001',
-        title: 'Problema con impresora HP',
-        user: 'Juan Pérez',
-        priority: 'high',
-        status: 'abierto',
-        createdAt: '10:30 AM',
-      ),
-      (
-        id: 'TK-002',
-        title: 'Error en sistema de facturación',
-        user: 'María García',
-        priority: 'critical',
-        status: 'en proceso',
-        createdAt: '09:15 AM',
-      ),
-      (
-        id: 'TK-003',
-        title: 'Solicitud de acceso a carpeta compartida',
-        user: 'Carlos López',
-        priority: 'medium',
-        status: 'pendiente',
-        createdAt: '08:45 AM',
-      ),
-    ];
-
-    Color priorityColor(String p) {
-      switch (p) {
-        case 'critical':
+    Color priorityColor(String? p) {
+      switch (p?.toLowerCase()) {
+        case 'critica':
           return Colors.red;
-        case 'high':
-          return Color(0xFF1C9985);
-        case 'medium':
+        case 'alta':
+          return const Color(0xFFFF6B6B);
+        case 'media':
           return Colors.orange;
-        case 'low':
-          return Color(0xFF1C9985);
+        case 'baja':
+          return const Color(0xFF1C9985);
         default:
           return Colors.grey;
       }
     }
 
-    Color statusColor(String s) {
-      switch (s) {
+    Color statusColor(String? s) {
+      switch (s?.toLowerCase()) {
         case 'abierto':
-          return Color(0xFF1C9985);
-        case 'en proceso':
+          return const Color(0xFF1C9985);
+        case 'en_proceso':
           return Colors.orange;
         case 'pendiente':
           return Colors.amber;
         case 'resuelto':
           return Colors.green;
+        case 'cerrado':
+          return Colors.grey;
         default:
           return Colors.grey;
       }
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    return RefreshIndicator(
+      onRefresh: _loadTickets,
+      color: const Color(0xFF1C9985),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
         // Greeting
         Text('¡Buen día, Administrador!',
             style: Theme.of(context)
@@ -264,19 +386,19 @@ class AdminDashboardTab extends StatelessWidget {
                 children: [
                   _SimpleStatCard(
                     title: 'Tickets Totales',
-                    value: '$totalTickets',
+                    value: isLoading ? '...' : '$totalTickets',
                     iconColor: Color(0xFF1C9985),
                     icon: Icons.confirmation_number_outlined,
                   ),
                   _SimpleStatCard(
                     title: 'Activos',
-                    value: '$activeTickets',
+                    value: isLoading ? '...' : '$activeTickets',
                     iconColor: Colors.orange,
                     icon: Icons.warning_amber_outlined,
                   ),
                   _SimpleStatCard(
                     title: 'Resueltos Hoy',
-                    value: '$resolvedToday',
+                    value: isLoading ? '...' : '$resolvedToday',
                     iconColor: Colors.green,
                     icon: Icons.check_circle_outline,
                   ),
@@ -302,32 +424,32 @@ class AdminDashboardTab extends StatelessWidget {
                 children: [
                   _StatCard(
                     title: 'Tickets Totales',
-                    value: '$totalTickets',
+                    value: isLoading ? '...' : '$totalTickets',
                     iconBg: Color(0xFF1C9985).withOpacity(0.1),
                     icon: const Icon(Icons.confirmation_number_outlined),
                     iconColor: Color(0xFF1C9985),
                     trendIcon: const Icon(Icons.trending_up, size: 16, color: Colors.green),
-                    trendText: const Text('+12% vs ayer',
+                    trendText: const Text('Datos en tiempo real',
                         style: TextStyle(fontSize: 12, color: Colors.green)),
                   ),
                   _StatCard(
                     title: 'Tickets Activos',
-                    value: '$activeTickets',
+                    value: isLoading ? '...' : '$activeTickets',
                     iconBg: Colors.orange.withOpacity(0.1),
                     icon: const Icon(Icons.warning_amber_outlined),
                     iconColor: Colors.orange,
-                    trendIcon: const Icon(Icons.trending_down, size: 16, color: Colors.red),
-                    trendText: const Text('-5% vs ayer',
-                        style: TextStyle(fontSize: 12, color: Colors.red)),
+                    trendIcon: const Icon(Icons.priority_high, size: 16, color: Colors.orange),
+                    trendText: const Text('Requieren atención',
+                        style: TextStyle(fontSize: 12, color: Colors.orange)),
                   ),
                   _StatCard(
                     title: 'Resueltos Hoy',
-                    value: '$resolvedToday',
+                    value: isLoading ? '...' : '$resolvedToday',
                     iconBg: Colors.green.withOpacity(0.15),
                     icon: const Icon(Icons.check_circle_outline),
                     iconColor: Colors.green,
-                    trendIcon: const Icon(Icons.trending_up, size: 16, color: Colors.green),
-                    trendText: const Text('+8% vs ayer',
+                    trendIcon: const Icon(Icons.today, size: 16, color: Colors.green),
+                    trendText: const Text('Actualizados hoy',
                         style: TextStyle(fontSize: 12, color: Colors.green)),
                   ),
                   _StatCard(
@@ -449,7 +571,6 @@ class AdminDashboardTab extends StatelessWidget {
           },
         ),
 
-        // Recent Tickets - Responsive
         LayoutBuilder(
           builder: (context, constraints) {
             return Card(
@@ -473,52 +594,129 @@ class AdminDashboardTab extends StatelessWidget {
                             .titleMedium
                             ?.copyWith(fontWeight: FontWeight.w600)),
                     OutlinedButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        widget.onNavigateToTab?.call(TabType.tickets);
+                      },
                       child: const Text('Ver Todos'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                ...recentTickets.map((t) => Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
+                // Mostrar loading, error o datos
+                if (isLoading)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF1C9985),
                       ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Left: details
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(t.id,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(width: 8),
-                                    _Badge(label: t.priority, color: priorityColor(t.priority)),
-                                    const SizedBox(width: 6),
-                                    _Badge(label: t.status, color: statusColor(t.status)),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(t.title),
-                                const SizedBox(height: 2),
-                                Text('${t.user} • ${t.createdAt}',
+                    ),
+                  )
+                else if (hasError)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.red[200]!),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red[600]),
+                            const SizedBox(width: 8),
+                            Text('Error al cargar tickets',
+                                style: TextStyle(
+                                  color: Colors.red[600],
+                                  fontWeight: FontWeight.w600,
+                                )),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'No se pudieron cargar los datos del servidor',
+                                style: TextStyle(color: Colors.red[600]),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _loadTickets,
+                              child: const Text('Reintentar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )
+                else if (recentTickets.isEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.inbox_outlined, color: Colors.grey),
+                        SizedBox(width: 8),
+                        Text('No hay tickets recientes'),
+                      ],
+                    ),
+                  )
+                else
+                  ...recentTickets.map((t) => Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Left: details
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text('#${t['id']?.toString() ?? 'N/A'}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600)),
+                                      const SizedBox(width: 8),
+                                      _Badge(
+                                        label: _getPriorityLabel(t['prioridad']),
+                                        color: priorityColor(t['prioridad']),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _Badge(
+                                        label: _getStatusLabel(t['estado']),
+                                        color: statusColor(t['estado']),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(t['titulo'] ?? 'Sin título'),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${t['usuario']?['nombre'] ?? 'Usuario'} • ${_formatDate(t['fecha_creacion'])}',
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodySmall
-                                        ?.copyWith(color: Colors.grey[600])),
-                              ],
+                                        ?.copyWith(color: Colors.grey[600]),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    )),
+                          ],
+                        ),
+                      )),
               ],
             ),
           ),
@@ -526,11 +724,10 @@ class AdminDashboardTab extends StatelessWidget {
           },
         ),
       ],
+      ),
     );
   }
 }
-
-
 
 class AdminNoticiasTab extends StatelessWidget {
   const AdminNoticiasTab({super.key});

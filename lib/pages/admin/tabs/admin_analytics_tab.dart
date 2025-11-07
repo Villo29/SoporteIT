@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
-
-/// =============================================================
-/// AdminNewsSettings (Flutter) – Solo la sección "Noticias"
-/// - Lista de noticias con estado Publicada/Borrador
-/// - Botones: Editar / Publicar|Ocultar / Eliminar
-/// - Diálogo para crear/editar noticia (mock, en memoria)
-/// - Estilo Material 3, tarjetas con bordes redondeados
-/// =============================================================
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../../services/auth_service.dart';
 
 class AdminNewsSettings extends StatefulWidget {
   const AdminNewsSettings({super.key});
@@ -19,69 +14,261 @@ class _AdminNewsSettingsState extends State<AdminNewsSettings> {
   int? _editingId; // null = creando
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
+  
+  List<_NewsItem> newsList = [];
+  bool _isLoading = false;
 
-  // Mock inicial (similar a tu captura)
-  List<_NewsItem> newsList = [
-    _NewsItem(
-      id: 1,
-      title: 'Nuevo sistema de tickets implementado',
-      content:
-          'Se ha actualizado el sistema de gestión de tickets con nuevas funcionalidades y mejoras en la interfaz de usuario.',
-      author: 'Admin',
-      date: DateTime(2024, 1, 14),
-      published: true,
-    ),
-    _NewsItem(
-      id: 2,
-      title: 'Mantenimiento programado del servidor',
-      content:
-          'El próximo sábado 20 de enero realizaremos mantenimiento en los servidores principales. El servicio estará disponible con...',
-      author: 'Admin',
-      date: DateTime(2024, 1, 9),
-      published: true,
-    ),
-    _NewsItem(
-      id: 3,
-      title: 'Nuevas políticas de seguridad',
-      content:
-          'Se han implementado nuevas políticas de seguridad que incluyen autenticación de dos factores y cambios de...',
-      author: 'Admin',
-      date: DateTime(2024, 1, 7),
-      published: false,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadNews();
+  }
 
-  // ────────────────────────────────────────────────────────────
-  // Acciones (equivalentes a tu código React)
-  // ────────────────────────────────────────────────────────────
-  void _handleUpdateNews() {
-    if ((_editingId != null) && _titleCtrl.text.trim().isNotEmpty && _contentCtrl.text.trim().isNotEmpty) {
-      setState(() {
-        newsList = newsList
-            .map((n) => n.id == _editingId!
-                ? n.copyWith(title: _titleCtrl.text.trim(), content: _contentCtrl.text.trim())
-                : n)
-            .toList();
-      });
-      _closeDialog();
+  // Cargar todas las noticias desde la API
+  Future<void> _loadNews() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/noticias'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          newsList = data.map((item) => _NewsItem.fromApi(item)).toList();
+        });
+        print('✅ Noticias cargadas: ${newsList.length}');
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error cargando noticias: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar noticias: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
+  // Crear nueva noticia
+  Future<void> _createNews() async {
+    if (_titleCtrl.text.trim().isEmpty || _contentCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Título y contenido son requeridos'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final response = await http.post(
+        Uri.parse('http://127.0.0.1:8000/noticias'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'titulo': _titleCtrl.text.trim(),
+          'contenido': _contentCtrl.text.trim(),
+          'autor': 'Administrador',
+        }),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        print('✅ Noticia creada exitosamente');
+        _closeDialog();
+        _loadNews(); // Recargar lista
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Noticia creada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error creando noticia: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear noticia: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Actualizar noticia existente
+  Future<void> _updateNews() async {
+    if (_editingId == null || _titleCtrl.text.trim().isEmpty || _contentCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Título y contenido son requeridos'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final response = await http.put(
+        Uri.parse('http://127.0.0.1:8000/noticias/$_editingId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'titulo': _titleCtrl.text.trim(),
+          'contenido': _contentCtrl.text.trim(),
+          'autor': 'Administrador',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ Noticia actualizada exitosamente');
+        _closeDialog();
+        _loadNews(); // Recargar lista
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Noticia actualizada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error actualizando noticia: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar noticia: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Eliminar noticia
+  Future<void> _deleteNews(int newsId) async {
+    // Confirmar eliminación
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar eliminación'),
+        content: const Text('¿Estás seguro de que deseas eliminar esta noticia?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final response = await http.delete(
+        Uri.parse('http://127.0.0.1:8000/noticias/$newsId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        print('✅ Noticia eliminada exitosamente');
+        _loadNews(); // Recargar lista
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Noticia eliminada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ Error eliminando noticia: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar noticia: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  void _handleUpdateNews() {
+    _updateNews();
+  }
+
   void _handleTogglePublish(int newsId) {
-    setState(() {
-      newsList = newsList
-          .map((n) => n.id == newsId ? n.copyWith(published: !n.published) : n)
-          .toList();
-    });
+    // Esta funcionalidad se puede implementar más tarde si la API la soporta
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Funcionalidad de publicar/ocultar no disponible en API'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   void _handleDeleteNews(int newsId) {
-    setState(() {
-      newsList.removeWhere((n) => n.id == newsId);
-    });
+    _deleteNews(newsId);
   }
 
-  // Crear nueva noticia
   void _openCreateDialog() {
     _editingId = null;
     _titleCtrl.clear();
@@ -90,25 +277,9 @@ class _AdminNewsSettingsState extends State<AdminNewsSettings> {
   }
 
   void _handleCreateNews() {
-    if (_titleCtrl.text.trim().isEmpty || _contentCtrl.text.trim().isEmpty) return;
-    setState(() {
-      final newId = (newsList.isEmpty ? 0 : newsList.map((e) => e.id).reduce((a, b) => a > b ? a : b)) + 1;
-      newsList.insert(
-        0,
-        _NewsItem(
-          id: newId,
-          title: _titleCtrl.text.trim(),
-          content: _contentCtrl.text.trim(),
-          author: 'Admin',
-          date: DateTime.now(),
-          published: false,
-        ),
-      );
-    });
-    _closeDialog();
+    _createNews();
   }
 
-  // Editar noticia existente
   void _openEditDialog(_NewsItem item) {
     _editingId = item.id;
     _titleCtrl.text = item.title;
@@ -168,10 +339,13 @@ class _AdminNewsSettingsState extends State<AdminNewsSettings> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        LayoutBuilder(
+    return RefreshIndicator(
+      onRefresh: _loadNews,
+      color: const Color(0xFF1C9985),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          LayoutBuilder(
           builder: (context, constraints) {
             // Responsive design for mobile
             bool isMobile = constraints.maxWidth < 600;
@@ -249,13 +423,54 @@ class _AdminNewsSettingsState extends State<AdminNewsSettings> {
 
         const SizedBox(height: 16),
 
-        ...newsList.map((n) => _NewsCard(
-              item: n,
-              onEdit: () => _openEditDialog(n),
-              onTogglePublish: () => _handleTogglePublish(n.id),
-              onDelete: () => _handleDeleteNews(n.id),
-            )),
-      ],
+        // Loading indicator
+        if (_isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(
+                color: Color(0xFF1C9985),
+              ),
+            ),
+          )
+        else if (newsList.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.article_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No hay noticias',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Crea la primera noticia para empezar',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ...newsList.map((n) => _NewsCard(
+                item: n,
+                onEdit: () => _openEditDialog(n),
+                onTogglePublish: () => _handleTogglePublish(n.id),
+                onDelete: () => _handleDeleteNews(n.id),
+              )),
+        ],
+      ),
     );
   }
 }
@@ -405,6 +620,20 @@ class _NewsItem {
   final String author;
   final DateTime date;
   final bool published;
+
+  // Constructor desde API
+  factory _NewsItem.fromApi(Map<String, dynamic> json) {
+    return _NewsItem(
+      id: json['id'] ?? 0,
+      title: json['titulo'] ?? '',
+      content: json['contenido'] ?? '',
+      author: json['autor'] ?? 'Administrador',
+      date: json['fecha_creacion'] != null 
+          ? DateTime.tryParse(json['fecha_creacion']) ?? DateTime.now()
+          : DateTime.now(),
+      published: json['publicado'] ?? true, // Asumimos que están publicadas por defecto
+    );
+  }
 
   _NewsItem copyWith({
     String? title,

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../ticket_detail_page.dart';
+import '../../../services/auth_service.dart';
 
 class AdminTicketsTab extends StatefulWidget {
   const AdminTicketsTab({super.key, this.onOpenTicketDetail});
@@ -14,89 +17,143 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
   String searchTerm = '';
   String filterStatus = 'all';
   String filterPriority = 'all';
+  
+  List<Map<String, dynamic>> tickets = [];
+  bool isLoading = true;
+  bool hasError = false;
+  String errorMessage = '';
 
-  final List<Map<String, dynamic>> tickets = [
-    {
-      'id': 'TK-001',
-      'title': 'Problema con impresora HP LaserJet en oficina 201',
-      'description': 'La impresora no responde y muestra error de papel atascado',
-      'user': 'Juan Pérez',
-      'userEmail': 'juan.perez@empresa.com',
-      'category': 'Hardware',
-      'priority': 'high',
-      'status': 'abierto',
-      'assignedTo': 'Ana García',
-      'createdAt': '2024-01-15 10:30',
-      'lastUpdate': '2024-01-15 14:20',
-      'responses': 3,
-      'solution': '',
-      'resolutionDate': null,
-    },
-    {
-      'id': 'TK-002',
-      'title': 'Error en sistema de facturación - módulo de reportes',
-      'description': 'Al generar reportes mensuales el sistema muestra error 500',
-      'user': 'María García',
-      'userEmail': 'maria.garcia@empresa.com',
-      'category': 'Software',
-      'priority': 'critical',
-      'status': 'en proceso',
-      'assignedTo': 'Carlos Ruiz',
-      'createdAt': '2024-01-15 09:15',
-      'lastUpdate': '2024-01-15 15:45',
-      'responses': 7,
-      'solution': '',
-      'resolutionDate': null,
-    },
-    {
-      'id': 'TK-003',
-      'title': 'Solicitud de acceso a carpeta compartida del departamento',
-      'description': 'Necesito acceso de lectura y escritura a /shared/marketing',
-      'user': 'Carlos López',
-      'userEmail': 'carlos.lopez@empresa.com',
-      'category': 'Red',
-      'priority': 'medium',
-      'status': 'pendiente',
-      'assignedTo': null,
-      'createdAt': '2024-01-15 08:45',
-      'lastUpdate': '2024-01-15 08:45',
-      'responses': 0,
-      'solution': '',
-      'resolutionDate': null,
-    },
-    {
-      'id': 'TK-004',
-      'title': 'Computadora lenta - posible problema de malware',
-      'description': 'La computadora del escritorio 15 funciona muy lenta desde ayer',
-      'user': 'Ana Martínez',
-      'userEmail': 'ana.martinez@empresa.com',
-      'category': 'Hardware',
-      'priority': 'medium',
-      'status': 'resuelto',
-      'assignedTo': 'Luis Torres',
-      'createdAt': '2024-01-14 16:20',
-      'lastUpdate': '2024-01-15 11:30',
-      'responses': 5,
-      'solution': 'Se realizó limpieza completa del sistema, eliminación de malware detectado y optimización del rendimiento. Se instaló antivirus actualizado y se configuró programa de mantenimiento preventivo.',
-      'resolutionDate': '2024-01-15 11:30',
-    },
-    {
-      'id': 'TK-005',
-      'title': 'Teléfono IP no recibe llamadas entrantes',
-      'description': 'El teléfono de la extensión 1205 no suena para llamadas entrantes',
-      'user': 'Roberto Silva',
-      'userEmail': 'roberto.silva@empresa.com',
-      'category': 'Telefonía',
-      'priority': 'high',
-      'status': 'resuelto',
-      'assignedTo': 'Ana García',
-      'createdAt': '2024-01-15 13:10',
-      'lastUpdate': '2024-01-15 16:00',
-      'responses': 2,
-      'solution': 'Se identificó configuración incorrecta en el servidor de telefonía. Se reconfiguró la extensión 1205 y se verificó conectividad. Problema resuelto completamente.',
-      'resolutionDate': '2024-01-15 16:00',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadTickets();
+  }
+
+  Future<void> _loadTickets() async {
+    if (!mounted) return;
+    
+    try {
+      print('🔄 [AdminTickets] Cargando tickets...');
+      
+      final headers = await AuthService.getAuthHeaders();
+      print('📤 [AdminTickets] Headers: $headers');
+      
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/tickets'),
+        headers: headers,
+      );
+      
+      print('📥 [AdminTickets] Status: ${response.statusCode}');
+      print('📥 [AdminTickets] Response: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        
+        if (mounted) {
+          setState(() {
+            // Mapear datos del API a formato esperado por la UI
+            tickets = data.map((ticket) => _mapApiTicketToUI(ticket)).toList();
+            isLoading = false;
+            hasError = false;
+          });
+        }
+        
+        print('✅ [AdminTickets] Tickets cargados: ${tickets.length}');
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('❌ [AdminTickets] Error: $e');
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = true;
+          errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  Map<String, dynamic> _mapApiTicketToUI(Map<String, dynamic> apiTicket) {
+    return {
+      'id': apiTicket['id']?.toString() ?? 'N/A',
+      'title': apiTicket['titulo'] ?? 'Sin título',
+      'description': apiTicket['descripcion_detallada'] ?? 'Sin descripción',
+      'user': apiTicket['usuario']?['nombre'] ?? 'Usuario desconocido',
+      'userEmail': apiTicket['usuario']?['email'] ?? 'email@desconocido.com',
+      'category': _mapCategory(apiTicket['categoria']),
+      'priority': _mapPriority(apiTicket['prioridad']),
+      'status': _mapStatus(apiTicket['estado']),
+      'assignedTo': apiTicket['empleado']?['nombre'],
+      'createdAt': _formatDateTime(apiTicket['fecha_creacion']),
+      'lastUpdate': _formatDateTime(apiTicket['fecha_actualizacion'] ?? apiTicket['fecha_creacion']),
+      'responses': 0, // Este campo tendría que venir del chat si está disponible
+      'solution': apiTicket['solucion'] ?? '',
+      'resolutionDate': apiTicket['fecha_resolucion'] != null 
+          ? _formatDateTime(apiTicket['fecha_resolucion']) 
+          : null,
+    };
+  }
+
+  String _mapCategory(String? category) {
+    switch (category?.toLowerCase()) {
+      case 'hardware':
+        return 'Hardware';
+      case 'software':
+        return 'Software';
+      case 'red':
+        return 'Red';
+      case 'telefonia':
+        return 'Telefonía';
+      default:
+        return category ?? 'General';
+    }
+  }
+
+  String _mapPriority(String? priority) {
+    switch (priority?.toLowerCase()) {
+      case 'critica':
+        return 'critical';
+      case 'alta':
+        return 'high';
+      case 'media':
+        return 'medium';
+      case 'baja':
+        return 'low';
+      default:
+        return 'medium';
+    }
+  }
+
+  String _mapStatus(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'abierto':
+        return 'abierto';
+      case 'en_proceso':
+        return 'en proceso';
+      case 'pendiente':
+        return 'pendiente';
+      case 'resuelto':
+        return 'resuelto';
+      case 'cerrado':
+        return 'cerrado';
+      default:
+        return 'abierto';
+    }
+  }
+
+  String _formatDateTime(String? dateTimeString) {
+    if (dateTimeString == null) return DateTime.now().toString();
+    
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return DateTime.now().toString();
+    }
+  }
+
+
 
   Color _priorityColor(String p, ColorScheme cs) {
     switch (p) {
@@ -193,12 +250,53 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF1C9985)),
+            SizedBox(height: 16),
+            Text('Cargando tickets...'),
+          ],
+        ),
+      );
+    }
+
+    if (hasError) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text('Error al cargar tickets', 
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(errorMessage, 
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                )),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadTickets,
+              child: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      );
+    }
+
     final total = tickets.length;
     final abiertos = tickets.where((t) => t['status'] == 'abierto').length;
     final enProceso = tickets.where((t) => t['status'] == 'en proceso').length;
     final resueltos = tickets.where((t) => t['status'] == 'resuelto').length;
 
-    return ListView(
+    return RefreshIndicator(
+      onRefresh: _loadTickets,
+      color: const Color(0xFF1C9985),
+      child: ListView(
       padding: const EdgeInsets.all(16),
       children: [
         // Header
@@ -341,6 +439,7 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
                 priorityColor: (p) => _priorityColor(p, Theme.of(context).colorScheme),
               )),
       ],
+      ),
     );
   }
 }
