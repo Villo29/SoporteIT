@@ -6,7 +6,9 @@ import 'tabs/admin_users_tab.dart';
 import 'tabs/admin_analytics_tab.dart';
 import 'tabs/admin_settings_tab.dart';
 import '../../services/auth_service.dart';
+
 enum TabType { dashboard, tickets, users, noticias, settings }
+
 enum ScreenType { main, ticketDetail, userDetail }
 
 class AdminMainScreen extends StatefulWidget {
@@ -47,9 +49,11 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
   Widget _renderContent() {
     switch (activeTab) {
       case TabType.dashboard:
-        return AdminDashboardTab(onNavigateToTab: (tab) {
-          setState(() => activeTab = tab);
-        });
+        return AdminDashboardTab(
+          onNavigateToTab: (tab) {
+            setState(() => activeTab = tab);
+          },
+        );
       case TabType.tickets:
         return AdminTicketsTab(onOpenTicketDetail: handleOpenTicketDetail);
       case TabType.users:
@@ -91,10 +95,7 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
 }
 
 class _MainScaffold extends StatelessWidget {
-  const _MainScaffold({
-    required this.content,
-    required this.bottomNav,
-  });
+  const _MainScaffold({required this.content, required this.bottomNav});
 
   final Widget content;
   final Widget bottomNav;
@@ -115,10 +116,7 @@ class _MainScaffold extends StatelessWidget {
 }
 
 class _BottomNav extends StatelessWidget {
-  const _BottomNav({
-    required this.activeTab,
-    required this.onChanged,
-  });
+  const _BottomNav({required this.activeTab, required this.onChanged});
 
   final TabType activeTab;
   final ValueChanged<TabType> onChanged;
@@ -134,7 +132,10 @@ class _BottomNav extends StatelessWidget {
       backgroundColor: Colors.white,
       selectedItemColor: const Color(0xFF1C9985),
       unselectedItemColor: Colors.grey,
-      selectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      selectedLabelStyle: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
       unselectedLabelStyle: const TextStyle(fontSize: 12),
       elevation: 8,
       items: const [
@@ -165,7 +166,7 @@ class _BottomNav extends StatelessWidget {
 
 class AdminDashboardTab extends StatefulWidget {
   const AdminDashboardTab({super.key, this.onNavigateToTab});
-  
+
   final void Function(TabType)? onNavigateToTab;
 
   @override
@@ -180,13 +181,14 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
 
   // Estadísticas calculadas
   int get totalTickets => tickets.length;
-  int get activeTickets => tickets.where((t) => t['estado'] != 'resuelto').length;
-  int get resolvedToday => tickets.where((t) => 
-    t['estado'] == 'resuelto' && _isToday(t['fecha_creacion'])).length;
-  
+  int get activeTickets =>
+      tickets.where((t) => t['estado'] != 'resuelto').length;
+  int get resolvedToday => tickets
+      .where((t) => t['estado'] == 'resuelto' && _isToday(t['fecha_creacion']))
+      .length;
+
   // Tickets recientes (primeros 3)
-  List<Map<String, dynamic>> get recentTickets => 
-    tickets.take(3).toList();
+  List<Map<String, dynamic>> get recentTickets => tickets.take(3).toList();
 
   @override
   void initState() {
@@ -200,8 +202,8 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
       final date = DateTime.parse(dateString);
       final now = DateTime.now();
       return date.year == now.year &&
-             date.month == now.month &&
-             date.day == now.day;
+          date.month == now.month &&
+          date.day == now.day;
     } catch (e) {
       return false;
     }
@@ -209,38 +211,31 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
 
   Future<void> _loadTickets() async {
     if (!mounted) return;
-    
+
     try {
-      print('🔄 [AdminDashboard] Cargando tickets...');
-      
       final headers = await AuthService.getAuthHeaders();
-      print('📤 [AdminDashboard] Headers: $headers');
-      
+
       final response = await http.get(
         Uri.parse('http://127.0.0.1:8000/tickets'),
         headers: headers,
       );
-      
-      print('📥 [AdminDashboard] Status: ${response.statusCode}');
-      print('📥 [AdminDashboard] Response: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
-        
+
         if (mounted) {
           setState(() {
-            tickets = data.map((ticket) => ticket as Map<String, dynamic>).toList();
+            tickets = data
+                .map((ticket) => ticket as Map<String, dynamic>)
+                .toList();
             isLoading = false;
             hasError = false;
           });
         }
-        
-        print('✅ [AdminDashboard] Tickets cargados: ${tickets.length}');
       } else {
         throw Exception('Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      print('❌ [AdminDashboard] Error: $e');
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -285,12 +280,12 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
 
   String _formatDate(String? dateString) {
     if (dateString == null) return 'N/A';
-    
+
     try {
       final date = DateTime.parse(dateString);
       final now = DateTime.now();
       final difference = now.difference(date);
-      
+
       if (difference.inMinutes < 60) {
         return '${difference.inMinutes}m';
       } else if (difference.inHours < 24) {
@@ -352,378 +347,426 @@ class _AdminDashboardTabState extends State<AdminDashboardTab> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-        // Greeting
-        Text('¡Buen día, Administrador!',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text('Aquí tienes un resumen de la actividad del sistema',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Colors.grey[600])),
-        const SizedBox(height: 16),
+          // Greeting
+          Text(
+            '¡Buen día, Administrador!',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Aquí tienes un resumen de la actividad del sistema',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 16),
 
-        // Key Metrics - Responsive design
-        LayoutBuilder(
-          builder: (context, constraints) {
-            // Determine if we're on mobile
-            bool isMobile = constraints.maxWidth < 600;
-            
-            if (isMobile) {
-              // Mobile: Simple grid with 2 columns, no trend data
-              return GridView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.2,
-                ),
-                children: [
-                  _SimpleStatCard(
-                    title: 'Tickets Totales',
-                    value: isLoading ? '...' : '$totalTickets',
-                    iconColor: Color(0xFF1C9985),
-                    icon: Icons.confirmation_number_outlined,
-                  ),
-                  _SimpleStatCard(
-                    title: 'Activos',
-                    value: isLoading ? '...' : '$activeTickets',
-                    iconColor: Colors.orange,
-                    icon: Icons.warning_amber_outlined,
-                  ),
-                  _SimpleStatCard(
-                    title: 'Resueltos Hoy',
-                    value: isLoading ? '...' : '$resolvedToday',
-                    iconColor: Colors.green,
-                    icon: Icons.check_circle_outline,
-                  ),
-                  _SimpleStatCard(
-                    title: 'Usuarios',
-                    value: '$totalUsers',
-                    iconColor: Color(0xFF1C9985),
-                    icon: Icons.group_outlined,
-                  ),
-                ],
-              );
-            } else {
-              // Desktop: Full cards with trends
-              return GridView(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.6,
-                ),
-                children: [
-                  _StatCard(
-                    title: 'Tickets Totales',
-                    value: isLoading ? '...' : '$totalTickets',
-                    iconBg: Color(0xFF1C9985).withOpacity(0.1),
-                    icon: const Icon(Icons.confirmation_number_outlined),
-                    iconColor: Color(0xFF1C9985),
-                    trendIcon: const Icon(Icons.trending_up, size: 16, color: Colors.green),
-                    trendText: const Text('Datos en tiempo real',
-                        style: TextStyle(fontSize: 12, color: Colors.green)),
-                  ),
-                  _StatCard(
-                    title: 'Tickets Activos',
-                    value: isLoading ? '...' : '$activeTickets',
-                    iconBg: Colors.orange.withOpacity(0.1),
-                    icon: const Icon(Icons.warning_amber_outlined),
-                    iconColor: Colors.orange,
-                    trendIcon: const Icon(Icons.priority_high, size: 16, color: Colors.orange),
-                    trendText: const Text('Requieren atención',
-                        style: TextStyle(fontSize: 12, color: Colors.orange)),
-                  ),
-                  _StatCard(
-                    title: 'Resueltos Hoy',
-                    value: isLoading ? '...' : '$resolvedToday',
-                    iconBg: Colors.green.withOpacity(0.15),
-                    icon: const Icon(Icons.check_circle_outline),
-                    iconColor: Colors.green,
-                    trendIcon: const Icon(Icons.today, size: 16, color: Colors.green),
-                    trendText: const Text('Actualizados hoy',
-                        style: TextStyle(fontSize: 12, color: Colors.green)),
-                  ),
-                  _StatCard(
-                    title: 'Usuarios Totales',
-                    value: '$totalUsers',
-                    iconBg: Color(0xFF1C9985).withOpacity(0.15),
-                    icon: const Icon(Icons.group_outlined),
-                    iconColor: Color(0xFF1C9985),
-                    trendIcon: const Icon(Icons.trending_up, size: 16, color: Colors.green),
-                    trendText: const Text('+3 nuevos',
-                        style: TextStyle(fontSize: 12, color: Colors.green)),
-                  ),
-                ],
-              );
-            }
-          },
-        ),
+          // Key Metrics - Responsive design
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Determine if we're on mobile
+              bool isMobile = constraints.maxWidth < 600;
 
-        const SizedBox(height: 12),
-
-        // Performance Metrics - Responsive
-        LayoutBuilder(
-          builder: (context, constraints) {
-            bool isMobile = constraints.maxWidth < 600;
-            
-            if (isMobile) {
-              // Mobile: Hide performance metrics to save space
-              return const SizedBox.shrink();
-            } else {
-              // Desktop: Show performance metrics
-              return Column(
-                children: [
-                  GridView(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 1.8,
-                    ),
-          children: [
-            Card(
-              elevation: 0,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey[300]!),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              if (isMobile) {
+                // Mobile: Simple grid with 2 columns, no trend data
+                return GridView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1.2,
+                  ),
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.access_time, color: Color(0xFF1C9985)),
-                        const SizedBox(width: 8),
-                        const Text('Tiempo Promedio de Resolución'),
-                      ],
+                    _SimpleStatCard(
+                      title: 'Tickets Totales',
+                      value: isLoading ? '...' : '$totalTickets',
+                      iconColor: Color(0xFF1C9985),
+                      icon: Icons.confirmation_number_outlined,
                     ),
-                    const SizedBox(height: 8),
-                    Text(avgResolutionTime,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text('Meta: < 4h',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey[600])),
-                  ],
-                ),
-              ),
-            ),
-            Card(
-              elevation: 0,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey[300]!),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.bar_chart_rounded, color: Color(0xFF1C9985)),
-                        const SizedBox(width: 8),
-                        const Text('Satisfacción del Usuario'),
-                      ],
+                    _SimpleStatCard(
+                      title: 'Activos',
+                      value: isLoading ? '...' : '$activeTickets',
+                      iconColor: Colors.orange,
+                      icon: Icons.warning_amber_outlined,
                     ),
-                    const SizedBox(height: 8),
-                    Text('$satisfactionRate%',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text('Meta: > 90%',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey[600])),
-                  ],
-                ),
-              ),
-            ),
-          ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              );
-            }
-          },
-        ),
-
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return Card(
-              elevation: 0,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey[300]!),
-              ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Tickets Recientes',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    OutlinedButton(
-                      onPressed: () {
-                        widget.onNavigateToTab?.call(TabType.tickets);
-                      },
-                      child: const Text('Ver Todos'),
+                    _SimpleStatCard(
+                      title: 'Resueltos Hoy',
+                      value: isLoading ? '...' : '$resolvedToday',
+                      iconColor: Colors.green,
+                      icon: Icons.check_circle_outline,
+                    ),
+                    _SimpleStatCard(
+                      title: 'Usuarios',
+                      value: '$totalUsers',
+                      iconColor: Color(0xFF1C9985),
+                      icon: Icons.group_outlined,
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                // Mostrar loading, error o datos
-                if (isLoading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF1C9985),
+                );
+              } else {
+                // Desktop: Full cards with trends
+                return GridView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.6,
+                  ),
+                  children: [
+                    _StatCard(
+                      title: 'Tickets Totales',
+                      value: isLoading ? '...' : '$totalTickets',
+                      iconBg: Color(0xFF1C9985).withOpacity(0.1),
+                      icon: const Icon(Icons.confirmation_number_outlined),
+                      iconColor: Color(0xFF1C9985),
+                      trendIcon: const Icon(
+                        Icons.trending_up,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      trendText: const Text(
+                        'Datos en tiempo real',
+                        style: TextStyle(fontSize: 12, color: Colors.green),
                       ),
                     ),
-                  )
-                else if (hasError)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red[200]!),
+                    _StatCard(
+                      title: 'Tickets Activos',
+                      value: isLoading ? '...' : '$activeTickets',
+                      iconBg: Colors.orange.withOpacity(0.1),
+                      icon: const Icon(Icons.warning_amber_outlined),
+                      iconColor: Colors.orange,
+                      trendIcon: const Icon(
+                        Icons.priority_high,
+                        size: 16,
+                        color: Colors.orange,
+                      ),
+                      trendText: const Text(
+                        'Requieren atención',
+                        style: TextStyle(fontSize: 12, color: Colors.orange),
+                      ),
                     ),
-                    child: Column(
+                    _StatCard(
+                      title: 'Resueltos Hoy',
+                      value: isLoading ? '...' : '$resolvedToday',
+                      iconBg: Colors.green.withOpacity(0.15),
+                      icon: const Icon(Icons.check_circle_outline),
+                      iconColor: Colors.green,
+                      trendIcon: const Icon(
+                        Icons.today,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      trendText: const Text(
+                        'Actualizados hoy',
+                        style: TextStyle(fontSize: 12, color: Colors.green),
+                      ),
+                    ),
+                    _StatCard(
+                      title: 'Usuarios Totales',
+                      value: '$totalUsers',
+                      iconBg: Color(0xFF1C9985).withOpacity(0.15),
+                      icon: const Icon(Icons.group_outlined),
+                      iconColor: Color(0xFF1C9985),
+                      trendIcon: const Icon(
+                        Icons.trending_up,
+                        size: 16,
+                        color: Colors.green,
+                      ),
+                      trendText: const Text(
+                        '+3 nuevos',
+                        style: TextStyle(fontSize: 12, color: Colors.green),
+                      ),
+                    ),
+                  ],
+                );
+              }
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // Performance Metrics - Responsive
+          LayoutBuilder(
+            builder: (context, constraints) {
+              bool isMobile = constraints.maxWidth < 600;
+
+              if (isMobile) {
+                // Mobile: Hide performance metrics to save space
+                return const SizedBox.shrink();
+              } else {
+                // Desktop: Show performance metrics
+                return Column(
+                  children: [
+                    GridView(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 1.8,
+                          ),
                       children: [
-                        Row(
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red[600]),
-                            const SizedBox(width: 8),
-                            Text('Error al cargar tickets',
-                                style: TextStyle(
-                                  color: Colors.red[600],
-                                  fontWeight: FontWeight.w600,
-                                )),
-                          ],
+                        Card(
+                          elevation: 0,
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.access_time,
+                                      color: Color(0xFF1C9985),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text('Tiempo Promedio de Resolución'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  avgResolutionTime,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Meta: < 4h',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'No se pudieron cargar los datos del servidor',
-                                style: TextStyle(color: Colors.red[600]),
-                              ),
+                        Card(
+                          elevation: 0,
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.bar_chart_rounded,
+                                      color: Color(0xFF1C9985),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text('Satisfacción del Usuario'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '$satisfactionRate%',
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Meta: > 90%',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: Colors.grey[600]),
+                                ),
+                              ],
                             ),
-                            TextButton(
-                              onPressed: _loadTickets,
-                              child: const Text('Reintentar'),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
-                  )
-                else if (recentTickets.isEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.inbox_outlined, color: Colors.grey),
-                        SizedBox(width: 8),
-                        Text('No hay tickets recientes'),
-                      ],
-                    ),
-                  )
-                else
-                  ...recentTickets.map((t) => Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Left: details
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 12),
+                  ],
+                );
+              }
+            },
+          ),
+
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return Card(
+                elevation: 0,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: Colors.grey[300]!),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Tickets Recientes',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          OutlinedButton(
+                            onPressed: () {
+                              widget.onNavigateToTab?.call(TabType.tickets);
+                            },
+                            child: const Text('Ver Todos'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Mostrar loading, error o datos
+                      if (isLoading)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF1C9985),
+                            ),
+                          ),
+                        )
+                      else if (hasError)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.red[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.red[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
                                 children: [
-                                  Row(
-                                    children: [
-                                      Text('#${t['id']?.toString() ?? 'N/A'}',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w600)),
-                                      const SizedBox(width: 8),
-                                      _Badge(
-                                        label: _getPriorityLabel(t['prioridad']),
-                                        color: priorityColor(t['prioridad']),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _Badge(
-                                        label: _getStatusLabel(t['estado']),
-                                        color: statusColor(t['estado']),
-                                      ),
-                                    ],
+                                  Icon(
+                                    Icons.error_outline,
+                                    color: Colors.red[600],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(t['titulo'] ?? 'Sin título'),
-                                  const SizedBox(height: 2),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    '${t['usuario']?['nombre'] ?? 'Usuario'} • ${_formatDate(t['fecha_creacion'])}',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(color: Colors.grey[600]),
+                                    'Error al cargar tickets',
+                                    style: TextStyle(
+                                      color: Colors.red[600],
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ],
                               ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'No se pudieron cargar los datos del servidor',
+                                      style: TextStyle(color: Colors.red[600]),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: _loadTickets,
+                                    child: const Text('Reintentar'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (recentTickets.isEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.inbox_outlined, color: Colors.grey),
+                              SizedBox(width: 8),
+                              Text('No hay tickets recientes'),
+                            ],
+                          ),
+                        )
+                      else
+                        ...recentTickets.map(
+                          (t) => Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          ],
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Left: details
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '#${t['id']?.toString() ?? 'N/A'}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          _Badge(
+                                            label: _getPriorityLabel(
+                                              t['prioridad'],
+                                            ),
+                                            color: priorityColor(
+                                              t['prioridad'],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          _Badge(
+                                            label: _getStatusLabel(t['estado']),
+                                            color: statusColor(t['estado']),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(t['titulo'] ?? 'Sin título'),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${t['usuario']?['nombre'] ?? 'Usuario'} • ${_formatDate(t['fecha_creacion'])}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(color: Colors.grey[600]),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      )),
-              ],
-            ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
-            );
-          },
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -746,6 +789,7 @@ class AdminSettingsTabWrapper extends StatelessWidget {
     return AdminSettingsTab();
   }
 }
+
 class TicketDetailScreen extends StatelessWidget {
   const TicketDetailScreen({
     super.key,
@@ -819,10 +863,7 @@ class UserDetailScreen extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.title,
-    required this.child,
-  });
+  const _SectionCard({required this.title, required this.child});
 
   final String title;
   final Widget child;
@@ -850,9 +891,6 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
-
-
-
 
 class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
@@ -912,21 +950,17 @@ class _SimpleStatCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               value,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: iconColor,
-                  ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: iconColor,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               title,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
           ],
@@ -976,17 +1010,18 @@ class _StatCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey[600])),
+                    Text(
+                      title,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                    ),
                     const SizedBox(height: 4),
-                    Text(value,
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      value,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                   ],
                 ),
                 Container(

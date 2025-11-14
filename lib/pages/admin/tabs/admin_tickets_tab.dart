@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../ticket_detail_page.dart';
@@ -17,7 +16,7 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
   String searchTerm = '';
   String filterStatus = 'all';
   String filterPriority = 'all';
-  
+
   List<Map<String, dynamic>> tickets = [];
   bool isLoading = true;
   bool hasError = false;
@@ -31,39 +30,28 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
 
   Future<void> _loadTickets() async {
     if (!mounted) return;
-    
+
     try {
-      print('🔄 [AdminTickets] Cargando tickets...');
-      
       final headers = await AuthService.getAuthHeaders();
-      print('📤 [AdminTickets] Headers: $headers');
-      
       final response = await http.get(
         Uri.parse('http://127.0.0.1:8000/tickets'),
         headers: headers,
       );
-      
-      print('📥 [AdminTickets] Status: ${response.statusCode}');
-      print('📥 [AdminTickets] Response: ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
-        
+
         if (mounted) {
           setState(() {
-            // Mapear datos del API a formato esperado por la UI
             tickets = data.map((ticket) => _mapApiTicketToUI(ticket)).toList();
             isLoading = false;
             hasError = false;
           });
         }
-        
-        print('✅ [AdminTickets] Tickets cargados: ${tickets.length}');
       } else {
         throw Exception('Error ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
-      print('❌ [AdminTickets] Error: $e');
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -81,16 +69,20 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       'description': apiTicket['descripcion_detallada'] ?? 'Sin descripción',
       'user': apiTicket['usuario']?['nombre'] ?? 'Usuario desconocido',
       'userEmail': apiTicket['usuario']?['email'] ?? 'email@desconocido.com',
+      'employeeId': apiTicket['usuario']?['id'] ?? apiTicket['id_empleado'],
       'category': _mapCategory(apiTicket['categoria']),
       'priority': _mapPriority(apiTicket['prioridad']),
       'status': _mapStatus(apiTicket['estado']),
       'assignedTo': apiTicket['empleado']?['nombre'],
       'createdAt': _formatDateTime(apiTicket['fecha_creacion']),
-      'lastUpdate': _formatDateTime(apiTicket['fecha_actualizacion'] ?? apiTicket['fecha_creacion']),
-      'responses': 0, // Este campo tendría que venir del chat si está disponible
+      'lastUpdate': _formatDateTime(
+        apiTicket['fecha_actualizacion'] ?? apiTicket['fecha_creacion'],
+      ),
+      'responses':
+          0,
       'solution': apiTicket['solucion'] ?? '',
-      'resolutionDate': apiTicket['fecha_resolucion'] != null 
-          ? _formatDateTime(apiTicket['fecha_resolucion']) 
+      'resolutionDate': apiTicket['fecha_resolucion'] != null
+          ? _formatDateTime(apiTicket['fecha_resolucion'])
           : null,
     };
   }
@@ -113,13 +105,13 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
   String _mapPriority(String? priority) {
     switch (priority?.toLowerCase()) {
       case 'critica':
-        return 'critical';
+        return 'Critico';
       case 'alta':
-        return 'high';
+        return 'Alto';
       case 'media':
-        return 'medium';
+        return 'Medio';
       case 'baja':
-        return 'low';
+        return 'Bajo';
       default:
         return 'medium';
     }
@@ -144,7 +136,7 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
 
   String _formatDateTime(String? dateTimeString) {
     if (dateTimeString == null) return DateTime.now().toString();
-    
+
     try {
       final dateTime = DateTime.parse(dateTimeString);
       return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
@@ -153,17 +145,15 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
     }
   }
 
-
-
   Color _priorityColor(String p, ColorScheme cs) {
     switch (p) {
-      case 'critical':
+      case 'Critico':
         return Colors.red;
-      case 'high':
+      case 'Alto':
         return Color(0xFF1C9985);
-      case 'medium':
+      case 'Medio':
         return Colors.orange;
-      case 'low':
+      case 'Bajo':
         return Color(0xFF1C9985);
       default:
         return Colors.grey;
@@ -203,11 +193,14 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
   List<Map<String, dynamic>> get _filteredTickets {
     return tickets.where((t) {
       final q = searchTerm.toLowerCase();
-      final matchesSearch = t['title'].toString().toLowerCase().contains(q) ||
+      final matchesSearch =
+          t['title'].toString().toLowerCase().contains(q) ||
           t['user'].toString().toLowerCase().contains(q) ||
           t['id'].toString().toLowerCase().contains(q);
-      final matchesStatus = filterStatus == 'all' || t['status'] == filterStatus;
-      final matchesPriority = filterPriority == 'all' || t['priority'] == filterPriority;
+      final matchesStatus =
+          filterStatus == 'all' || t['status'] == filterStatus;
+      final matchesPriority =
+          filterPriority == 'all' || t['priority'] == filterPriority;
       return matchesSearch && matchesStatus && matchesPriority;
     }).toList();
   }
@@ -223,8 +216,10 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
         tickets[ticketIndex]['status'] = newStatus;
         if (newStatus == 'resuelto') {
           final now = DateTime.now();
-          tickets[ticketIndex]['resolutionDate'] = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-          tickets[ticketIndex]['solution'] = 'Ticket resuelto por el administrador.';
+          tickets[ticketIndex]['resolutionDate'] =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+          tickets[ticketIndex]['solution'] =
+              'Ticket resuelto por el administrador.';
         }
       }
     });
@@ -237,7 +232,9 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
           ticket: ticket,
           onUpdateTicket: (updatedTicket) {
             setState(() {
-              final index = tickets.indexWhere((t) => t['id'] == updatedTicket['id']);
+              final index = tickets.indexWhere(
+                (t) => t['id'] == updatedTicket['id'],
+              );
               if (index != -1) {
                 tickets[index] = updatedTicket;
               }
@@ -270,14 +267,18 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
           children: [
             Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
             const SizedBox(height: 16),
-            Text('Error al cargar tickets', 
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Error al cargar tickets',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
-            Text(errorMessage, 
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
-                )),
+            Text(
+              errorMessage,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadTickets,
@@ -297,123 +298,25 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
       onRefresh: _loadTickets,
       color: const Color(0xFF1C9985),
       child: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Header
-        Text('Gestión de Tickets',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text('Administra y da seguimiento a todos los tickets del sistema',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600])),
-        const SizedBox(height: 16),
-
-        // Filtros y búsqueda
-        Card(
-          elevation: 0,
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.grey[300]!),
+        padding: const EdgeInsets.all(16),
+        children: [
+          // Header
+          Text(
+            'Gestión de Tickets',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Search
-                TextField(
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Buscar por título, usuario o ID...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onChanged: (v) => setState(() => searchTerm = v),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: filterStatus,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Todos los estados')),
-                          DropdownMenuItem(value: 'abierto', child: Text('Abierto')),
-                          DropdownMenuItem(value: 'en proceso', child: Text('En Proceso')),
-                          DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
-                          DropdownMenuItem(value: 'resuelto', child: Text('Resuelto')),
-                        ],
-                        onChanged: (v) => setState(() => filterStatus = v ?? 'all'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: filterPriority,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Todas las prioridades')),
-                          DropdownMenuItem(value: 'critical', child: Text('Crítica')),
-                          DropdownMenuItem(value: 'high', child: Text('Alta')),
-                          DropdownMenuItem(value: 'medium', child: Text('Media')),
-                          DropdownMenuItem(value: 'low', child: Text('Baja')),
-                        ],
-                        onChanged: (v) => setState(() => filterPriority = v ?? 'all'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          const SizedBox(height: 4),
+          Text(
+            'Administra y da seguimiento a todos los tickets del sistema',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
           ),
-        ),
+          const SizedBox(height: 16),
 
-        const SizedBox(height: 16),
-
-        // Resumen - Responsive
-        LayoutBuilder(
-          builder: (context, constraints) {
-            bool isMobile = constraints.maxWidth < 600;
-            
-            return GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: isMobile ? 2 : 4,
-                mainAxisSpacing: isMobile ? 8 : 12,
-                crossAxisSpacing: isMobile ? 8 : 12,
-                childAspectRatio: isMobile ? 1.8 : 1.4,
-              ),
-              children: [
-                _SummaryCard(title: 'Total', value: '$total'),
-                _SummaryCard(title: 'Abiertos', value: '$abiertos', valueColor: Color(0xFF1C9985)),
-                _SummaryCard(title: 'En Proceso', value: '$enProceso', valueColor: Colors.orange),
-                _SummaryCard(title: 'Resueltos', value: '$resueltos', valueColor: Colors.green),
-              ],
-            );
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        // Lista de tickets
-        if (_filteredTickets.isEmpty)
+          // Filtros y búsqueda
           Card(
             elevation: 0,
             color: Colors.white,
@@ -421,31 +324,192 @@ class _AdminTicketsTabState extends State<AdminTicketsTab> {
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: Colors.grey[300]!),
             ),
-            child: const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text('No se encontraron tickets que coincidan con los filtros.'),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Search
+                  TextField(
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Buscar por título, usuario o ID...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onChanged: (v) => setState(() => searchTerm = v),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          value: filterStatus,
+                          decoration: InputDecoration(
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'all',
+                              child: Text('Todos los estados'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'abierto',
+                              child: Text('Abierto'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'en proceso',
+                              child: Text('En Proceso'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'pendiente',
+                              child: Text('Pendiente'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'resuelto',
+                              child: Text('Resuelto'),
+                            ),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => filterStatus = v ?? 'all'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          isExpanded: true,
+                          value: filterPriority,
+                          decoration: InputDecoration(
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'all',
+                              child: Text('Todas las prioridades'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'critical',
+                              child: Text('Crítica'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'high',
+                              child: Text('Alta'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'medium',
+                              child: Text('Media'),
+                            ),
+                            DropdownMenuItem(value: 'low', child: Text('Baja')),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => filterPriority = v ?? 'all'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-          )
-        else
-          ..._filteredTickets.map((t) => _TicketCard(
+          ),
+
+          const SizedBox(height: 16),
+
+          // Resumen - Responsive
+          LayoutBuilder(
+            builder: (context, constraints) {
+              bool isMobile = constraints.maxWidth < 600;
+
+              return GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isMobile ? 2 : 4,
+                  mainAxisSpacing: isMobile ? 8 : 12,
+                  crossAxisSpacing: isMobile ? 8 : 12,
+                  childAspectRatio: isMobile ? 1.8 : 1.4,
+                ),
+                children: [
+                  _SummaryCard(title: 'Total', value: '$total'),
+                  _SummaryCard(
+                    title: 'Abiertos',
+                    value: '$abiertos',
+                    valueColor: Color(0xFF1C9985),
+                  ),
+                  _SummaryCard(
+                    title: 'En Proceso',
+                    value: '$enProceso',
+                    valueColor: Colors.orange,
+                  ),
+                  _SummaryCard(
+                    title: 'Resueltos',
+                    value: '$resueltos',
+                    valueColor: Colors.green,
+                  ),
+                ],
+              );
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // Lista de tickets
+          if (_filteredTickets.isEmpty)
+            Card(
+              elevation: 0,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'No se encontraron tickets que coincidan con los filtros.',
+                  ),
+                ),
+              ),
+            )
+          else
+            ..._filteredTickets.map(
+              (t) => _TicketCard(
                 data: t,
                 onOpen: () => _openTicketDetail(t),
-                onAssign: (assignee) => _handleAssignTicket(t['id'] as String, assignee),
-                onChangeStatus: (s) => _handleChangeStatus(t['id'] as String, s),
+                onAssign: (assignee) =>
+                    _handleAssignTicket(t['id'] as String, assignee),
+                onChangeStatus: (s) =>
+                    _handleChangeStatus(t['id'] as String, s),
                 statusColor: _statusColor,
                 statusIcon: _statusIcon,
-                priorityColor: (p) => _priorityColor(p, Theme.of(context).colorScheme),
-              )),
-      ],
+                priorityColor: (p) =>
+                    _priorityColor(p, Theme.of(context).colorScheme),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.title, required this.value, this.valueColor});
+  const _SummaryCard({
+    required this.title,
+    required this.value,
+    this.valueColor,
+  });
   final String title;
   final String value;
   final Color? valueColor;
@@ -466,15 +530,17 @@ class _SummaryCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 6),
             Text(
               value,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: valueColor,
-                  ),
+                fontWeight: FontWeight.w600,
+                color: valueColor,
+              ),
             ),
           ],
         ),
@@ -513,11 +579,12 @@ class _TicketCard extends StatelessWidget {
     final String status = data['status'];
     final String priority = data['priority'];
     final int responses = data['responses'];
-    final String lastUpdate = (DateTime.tryParse(data['lastUpdate']) ?? DateTime.now())
-        .toLocal()
-        .toString()
-        .split(' ')
-        .first;
+    final String lastUpdate =
+        (DateTime.tryParse(data['lastUpdate']) ?? DateTime.now())
+            .toLocal()
+            .toString()
+            .split(' ')
+            .first;
 
     return Card(
       elevation: 0,
@@ -529,7 +596,7 @@ class _TicketCard extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           bool isMobile = constraints.maxWidth < 400;
-          
+
           return Padding(
             padding: EdgeInsets.all(isMobile ? 12 : 16),
             child: Column(
@@ -540,138 +607,141 @@ class _TicketCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(id, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 8),
-                          _Badge(label: priority, color: priorityColor(priority)),
-                          const SizedBox(width: 6),
-                          _Badge(label: status, color: statusColor(status), icon: statusIcon(status)),
+                          Row(
+                            children: [
+                              Text(
+                                id,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _Badge(
+                                label: priority,
+                                color: priorityColor(priority),
+                              ),
+                              const SizedBox(width: 6),
+                              _Badge(
+                                label: status,
+                                color: statusColor(status),
+                                icon: statusIcon(status),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            title,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            desc,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.grey[600]),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        desc,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // Details line
+                DefaultTextStyle(
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall!.copyWith(color: Colors.grey[600]),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isMobile = constraints.maxWidth < 400;
+
+                      if (isMobile) {
+                        // Mobile layout: stack vertically
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              children: [
+                                Text(user),
+                                const Text(' • '),
+                                Text(category),
+                                if (assignedTo != null) ...[
+                                  const Text(' • '),
+                                  Text('Asignado: $assignedTo'),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              children: [
+                                Text('$responses respuestas'),
+                                const Text(' • '),
+                                Text('Actualizado: $lastUpdate'),
+                              ],
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Desktop layout: original horizontal
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: Row(
+                              children: [
+                                Text(user),
+                                const SizedBox(width: 6),
+                                const Text('•'),
+                                const SizedBox(width: 6),
+                                Text(category),
+                                if (assignedTo != null) ...[
+                                  const SizedBox(width: 6),
+                                  const Text('•'),
+                                  const SizedBox(width: 6),
+                                  Text('Asignado: $assignedTo'),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Flexible(
+                            child: Row(
+                              children: [
+                                Text('$responses respuestas'),
+                                const SizedBox(width: 12),
+                                Text('Actualizado: $lastUpdate'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'detalle':
-                        onOpen?.call();
-                        break;
-                      case 'proceso':
-                        onChangeStatus('en proceso');
-                        break;
-                      case 'reasignar':
-                        onAssign('admin');
-                        break;
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'detalle', child: Text('Ver Detalles')),
-                    PopupMenuItem(value: 'proceso', child: Text('Cambiar Estado')),
-                    PopupMenuItem(value: 'reasignar', child: Text('Reasignar')),
+
+                const SizedBox(height: 10),
+
+                // Actions
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: onOpen,
+                      child: const Text('Ver Ticket'),
+                    ),
+                    const SizedBox(width: 8),
+                    if (status != 'resuelto')
+                      OutlinedButton(
+                        onPressed: onOpen,
+                        child: const Text('Resolver Ticket'),
+                      ),
                   ],
                 ),
               ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // Details line
-            DefaultTextStyle(
-              style: Theme.of(context).textTheme.bodySmall!.copyWith(color: Colors.grey[600]),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isMobile = constraints.maxWidth < 400;
-                  
-                  if (isMobile) {
-                    // Mobile layout: stack vertically
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(children: [
-                          Text(user),
-                          const Text(' • '),
-                          Text(category),
-                          if (assignedTo != null) ...[
-                            const Text(' • '),
-                            Text('Asignado: $assignedTo'),
-                          ],
-                        ]),
-                        const SizedBox(height: 4),
-                        Wrap(children: [
-                          Text('$responses respuestas'),
-                          const Text(' • '),
-                          Text('Actualizado: $lastUpdate'),
-                        ]),
-                      ],
-                    );
-                  }
-                  
-                  // Desktop layout: original horizontal
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Row(children: [
-                          Text(user),
-                          const SizedBox(width: 6),
-                          const Text('•'),
-                          const SizedBox(width: 6),
-                          Text(category),
-                          if (assignedTo != null) ...[
-                            const SizedBox(width: 6),
-                            const Text('•'),
-                            const SizedBox(width: 6),
-                            Text('Asignado: $assignedTo'),
-                          ],
-                        ]),
-                      ),
-                      Flexible(
-                        child: Row(children: [
-                          Text('$responses respuestas'),
-                          const SizedBox(width: 12),
-                          Text('Actualizado: $lastUpdate'),
-                        ]),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Actions
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: onOpen,
-                  child: const Text('Ver Ticket'),
-                ),
-                const SizedBox(width: 8),
-                if (status != 'resuelto')
-                  OutlinedButton(
-                    onPressed: onOpen,
-                    child: const Text('Resolver Ticket'),
-                  ),
-              ],
-            ),
-          ],
             ),
           );
         },
@@ -705,7 +775,11 @@ class _Badge extends StatelessWidget {
           ],
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

@@ -3,6 +3,8 @@ import '../../../services/auth_service.dart';
 import '../../login_page.dart';
 
 class AdminSettingsTab extends StatefulWidget {
+  const AdminSettingsTab({super.key});
+
   @override
   _AdminSettingsTabState createState() => _AdminSettingsTabState();
 }

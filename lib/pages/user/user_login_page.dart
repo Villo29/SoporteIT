@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'user_home_page.dart';
 
 class UserLoginPage extends StatefulWidget {
+  const UserLoginPage({super.key});
+
   @override
   _UserLoginPageState createState() => _UserLoginPageState();
 }

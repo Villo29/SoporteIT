@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../services/auth_service.dart';
 import 'voucher_print_page.dart';
-
-/// =============================================================
-/// TicketDetailPage - Vista detallada del ticket con chat completo
-/// - Vista adaptada con header, badges de prioridad/estado,
-///   info del ticket/usuario, acciones rápidas, adjuntos, conversación,
-///   sección de descarga de voucher cuando está resuelto y compositor de mensaje.
-/// =============================================================
 
 class TicketDetailPage extends StatefulWidget {
   const TicketDetailPage({
@@ -26,20 +22,203 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   bool isEditing = false;
   bool isInternalNote = false;
   final TextEditingController _replyCtrl = TextEditingController();
-  
-  late List<Map<String, dynamic>> messages; // Conversación del ticket
+
+  late List<Map<String, dynamic>> messages;
+  Map<String, dynamic>? ticketData;
+  Map<String, dynamic>? perfilData;
+  bool isLoadingTicket = false;
+
+  Future<void> _loadTicketDetails() async {
+    if (widget.ticket['id'] == null) return;
+
+    setState(() => isLoadingTicket = true);
+
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token no disponible');
+      }
+
+      final ticketId = widget.ticket['id'];
+
+      // Primero obtener los datos básicos del ticket
+      final ticketResponse = await http.get(
+        Uri.parse('http://127.0.0.1:8000/tickets/$ticketId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (ticketResponse.statusCode != 200) {
+        throw Exception(
+          'Error ${ticketResponse.statusCode}: ${ticketResponse.body}',
+        );
+      }
+
+      final ticketBasicData = json.decode(ticketResponse.body);
+      final empleadoId =
+          ticketBasicData['id_empleado'] ?? widget.ticket['employeeId'];
+
+      Map<String, dynamic>? empleadoPerfilData;
+      if (empleadoId != null) {
+        try {
+          final empleadoResponse = await http.get(
+            Uri.parse(
+              'http://127.0.0.1:8000/empleados/$empleadoId/ticket/$ticketId',
+            ),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          );
+
+          if (empleadoResponse.statusCode == 200) {
+            final empleadoData = json.decode(empleadoResponse.body);
+
+            if (empleadoData.containsKey('perfil')) {
+              empleadoPerfilData = empleadoData['perfil'];
+            }
+          } else {}
+        } catch (e) {}
+      }
+
+      setState(() {
+        ticketData = ticketBasicData;
+        perfilData = empleadoPerfilData;
+
+        if (perfilData != null) {
+        } else {}
+      });
+      _updateMessagesWithApiData();
+
+      if (ticketBasicData['estado'] == 'abierto') {
+        _autoChangeToInProgress();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar detalles del ticket: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => isLoadingTicket = false);
+    }
+  }
+
+  Future<void> _autoChangeToInProgress() async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) return;
+
+      final ticketId =
+          ticketData?['id']?.toString() ?? widget.ticket['id']?.toString();
+      if (ticketId == null) return;
+
+      final response = await http.put(
+        Uri.parse('http://127.0.0.1:8000/tickets/$ticketId/estado'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'estado': 'en_proceso'}),
+      );
+
+      if (response.statusCode == 200) {
+        // Actualizar los datos locales
+        setState(() {
+          if (ticketData != null) {
+            ticketData!['estado'] = 'en_proceso';
+          }
+          widget.ticket['status'] = 'en_proceso';
+        });
+      }
+    } catch (e) {}
+  }
+
+  String get ticketTitle =>
+      ticketData?['titulo'] ?? widget.ticket['title'] ?? 'Ticket sin título';
+  String get ticketDescription =>
+      ticketData?['descripcion_detallada'] ??
+      widget.ticket['description'] ??
+      '';
+  String get ticketCategory =>
+      ticketData?['categoria'] ?? widget.ticket['category'] ?? '';
+  String get ticketPriority =>
+      ticketData?['prioridad'] ?? widget.ticket['priority'] ?? '';
+  String get ticketLocation =>
+      ticketData?['ubicacion'] ?? widget.ticket['location'] ?? '';
+  String get ticketStatus =>
+      ticketData?['estado'] ?? widget.ticket['status'] ?? '';
+  String get ticketCreatedAt =>
+      ticketData?['created_at'] ?? widget.ticket['createdAt'] ?? '';
+  int get ticketEmployeeId =>
+      ticketData?['id_empleado'] ?? widget.ticket['employeeId'] ?? 0;
+  List<dynamic> get ticketFiles => ticketData?['archivos'] ?? [];
+
+  // Getters para datos del empleado/usuario desde el perfil
+  String get empleadoNombre =>
+      perfilData?['nombre'] ?? widget.ticket['user'] ?? 'Usuario desconocido';
+  String get empleadoApellido => perfilData?['apellido'] ?? '';
+  String get empleadoNombreCompleto {
+    final result = perfilData != null
+        ? '${perfilData!['nombre']} ${perfilData!['apellido']}'
+        : widget.ticket['user'] ?? 'Usuario desconocido';
+    return result;
+  }
+
+  String get empleadoEmail {
+    final result = perfilData?['correo'] ?? widget.ticket['userEmail'] ?? '';
+    return result;
+  }
+
+  String get empleadoArea {
+    final result = perfilData?['area'] ?? '';
+    return result;
+  }
+
+  String get empleadoCargo {
+    final result = perfilData?['cargo'] ?? '';
+    return result;
+  }
+
+  String get empleadoFechaNacimiento => perfilData?['fecha_nacimiento'] ?? '';
+  String get displayStatus {
+    switch (ticketStatus) {
+      case 'en_proceso':
+        return 'en proceso';
+      default:
+        return ticketStatus;
+    }
+  }
+
+  String _formatDateTime(String? dateTime) {
+    if (dateTime == null || dateTime.isEmpty) return 'No disponible';
+    try {
+      final date = DateTime.parse(dateTime);
+      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateTime;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    
-    // Inicializar conversación mock (en un caso real vendría de API)
+    _initializeMessages();
+    _loadTicketDetails();
+  }
+
+  void _initializeMessages() {
     messages = [
       {
         'id': 1,
-        'author': widget.ticket['user'],
+        'author': widget.ticket['user'] ?? 'Usuario',
         'role': 'user',
-        'content': widget.ticket['description'],
+        'content': widget.ticket['description'] ?? '',
         'timestamp': widget.ticket['createdAt'],
         'isInternal': false,
       },
@@ -47,20 +226,34 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         'id': 2,
         'author': widget.ticket['assignedTo'] ?? 'Técnico de Soporte',
         'role': 'support',
-        'content': 'Hola ${widget.ticket['user']}, gracias por reportar el problema. Voy a revisar tu solicitud y trabajar en una solución.',
+        'content':
+            'Hola ${widget.ticket['user'] ?? 'Usuario'}, gracias por reportar el problema. Voy a revisar tu solicitud y trabajar en una solución.',
         'timestamp': widget.ticket['lastUpdate'],
         'isInternal': false,
       },
-      if (widget.ticket['solution'] != null && widget.ticket['solution'].toString().isNotEmpty)
+      if (widget.ticket['solution'] != null &&
+          widget.ticket['solution'].toString().isNotEmpty)
         {
           'id': 3,
           'author': widget.ticket['assignedTo'] ?? 'Técnico de Soporte',
           'role': 'support',
           'content': 'TICKET RESUELTO: ${widget.ticket['solution']}',
-          'timestamp': widget.ticket['resolutionDate'] ?? widget.ticket['lastUpdate'],
+          'timestamp':
+              widget.ticket['resolutionDate'] ?? widget.ticket['lastUpdate'],
           'isInternal': false,
         },
     ];
+  }
+
+  void _updateMessagesWithApiData() {
+    if (messages.isNotEmpty) {
+      messages[0]['author'] = empleadoNombreCompleto;
+      messages[0]['content'] = ticketDescription;
+      if (messages.length > 1) {
+        messages[1]['content'] =
+            'Hola $empleadoNombreCompleto, gracias por reportar el problema. Voy a revisar tu solicitud y trabajar en una solución.';
+      }
+    }
   }
 
   @override
@@ -69,15 +262,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     super.dispose();
   }
 
-  // ────────────────────────────────────────────────────────────
-  // Helpers de estilo para badges
-  // ────────────────────────────────────────────────────────────
   Color priorityColor(String p, ColorScheme cs) {
     switch (p) {
       case 'critical':
         return Colors.red;
       case 'high':
-        return const Color(0xFF1C9985); // Usando el color de la app
+        return const Color(0xFF1C9985);
       case 'medium':
         return Colors.orange;
       case 'low':
@@ -91,12 +281,15 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     switch (s) {
       case 'abierto':
         return const Color(0xFF1C9985);
+      case 'en_proceso':
       case 'en proceso':
         return Colors.orange;
       case 'pendiente':
         return Colors.amber;
       case 'resuelto':
         return Colors.green;
+      case 'cerrado':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -109,76 +302,95 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     return (a + b).toUpperCase();
   }
 
-  // ────────────────────────────────────────────────────────────
-  // Acciones
-  // ────────────────────────────────────────────────────────────
   void _handleSendMessage() {
     final txt = _replyCtrl.text.trim();
     if (txt.isEmpty) return;
-    
+
     setState(() {
       final now = DateTime.now();
-      final timestamp = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-      
+      final timestamp =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
       messages.add({
         'id': (messages.isEmpty ? 0 : (messages.last['id'] as int)) + 1,
         'author': 'Tú (Admin)',
         'role': 'support',
-        'content': (isInternalNote ? 'Nota interna: ' : '') + txt,
         'timestamp': timestamp,
         'isInternal': isInternalNote,
       });
-      
-      // Actualizar el timestamp del ticket
       widget.ticket['lastUpdate'] = timestamp;
-      
+
       _replyCtrl.clear();
       isInternalNote = false;
     });
-    
-    // Actualizar ticket en el sistema
     widget.onUpdateTicket(widget.ticket);
-    
-    // Mostrar confirmación
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(isInternalNote ? 'Nota interna añadida' : 'Mensaje enviado'),
-        backgroundColor: const Color(0xFF1C9985),
-        duration: const Duration(seconds: 1),
-      ),
-    );
   }
 
-  void _handleStatusChange(String newStatus) {
-    setState(() {
-      widget.ticket['status'] = newStatus;
-      final now = DateTime.now();
-      widget.ticket['lastUpdate'] = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-      
-      if (newStatus == 'resuelto') {
-        widget.ticket['resolutionDate'] = widget.ticket['lastUpdate'];
+  Future<void> _handleStatusChange(String newStatus) async {
+    try {
+      setState(() {
+        isLoadingTicket = true;
+      });
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('Token de autenticación no disponible');
       }
-    });
-    widget.onUpdateTicket(widget.ticket);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Estado cambiado a "$newStatus"'),
-        backgroundColor: const Color(0xFF1C9985),
-      ),
-    );
-  }
+      final ticketId =
+          ticketData?['id']?.toString() ?? widget.ticket['id']?.toString();
+      if (ticketId == null) {
+        throw Exception('ID del ticket no disponible');
+      }
 
-  void _handleAssignTicket(String assignTo) {
-    setState(() {
-      widget.ticket['assignedTo'] = assignTo;
-    });
-    widget.onUpdateTicket(widget.ticket);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Asignado a $assignTo'),
-        backgroundColor: const Color(0xFF1C9985),
-      ),
-    );
+      final response = await http.put(
+        Uri.parse('http://127.0.0.1:8000/tickets/$ticketId/estado'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'estado': newStatus}),
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          if (ticketData != null) {
+            ticketData!['estado'] = newStatus;
+          }
+          widget.ticket['status'] = newStatus;
+          final now = DateTime.now();
+          widget.ticket['lastUpdate'] =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+          if (newStatus == 'resuelto') {
+            widget.ticket['resolutionDate'] = widget.ticket['lastUpdate'];
+          }
+        });
+
+        widget.onUpdateTicket(widget.ticket);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Estado cambiado a "$newStatus" exitosamente'),
+            backgroundColor: const Color(0xFF1C9985),
+          ),
+        );
+
+        // Recargar los datos del ticket desde la API
+        await _loadTicketDetails();
+      } else {
+        throw Exception('Error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al cambiar el estado: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        isLoadingTicket = false;
+      });
+    }
   }
 
   void _printVoucher() {
@@ -192,12 +404,11 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isResolved = widget.ticket['status'] == 'resuelto';
+    final isResolved = ticketStatus == 'resuelto' || ticketStatus == 'cerrado';
 
     return Scaffold(
       body: Column(
         children: [
-          // Header estilo barra superior
           Container(
             color: const Color(0xFF1C9985),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -229,524 +440,788 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                     ),
                   ),
                   _Badge(
-                    label: widget.ticket['priority'],
-                    color: priorityColor(widget.ticket['priority'], cs),
+                    label: ticketPriority,
+                    color: priorityColor(ticketPriority, cs),
                   ),
                   const SizedBox(width: 8),
                   _Badge(
-                    label: widget.ticket['status'],
-                    color: statusColor(widget.ticket['status']),
+                    label: displayStatus,
+                    color: statusColor(ticketStatus),
                   ),
                 ],
               ),
             ),
           ),
-
-          // Contenido
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Ticket info card
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
+            child: isLoadingTicket
+                ? const Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (!isEditing) ...[
-                                    Text(
-                                      widget.ticket['title'],
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      widget.ticket['description'],
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.copyWith(color: cs.onSurfaceVariant),
-                                    ),
-                                  ] else ...[
-                                    TextFormField(
-                                      initialValue: widget.ticket['title'],
-                                      decoration: const InputDecoration(labelText: 'Título'),
-                                      onChanged: (v) => widget.ticket['title'] = v,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      initialValue: widget.ticket['description'],
-                                      maxLines: 5,
-                                      decoration: const InputDecoration(labelText: 'Descripción'),
-                                      onChanged: (v) => widget.ticket['description'] = v,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                setState(() => isEditing = !isEditing);
-                                if (!isEditing) {
-                                  widget.onUpdateTicket(widget.ticket);
-                                }
-                              },
-                              icon: Icon(isEditing ? Icons.save : Icons.edit, size: 18),
-                              label: Text(isEditing ? 'Guardar' : 'Editar'),
-                            ),
-                          ],
+                        CircularProgressIndicator(color: Color(0xFF1C9985)),
+                        SizedBox(height: 16),
+                        Text(
+                          'Cargando detalles del ticket...',
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
                         ),
                       ],
                     ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Detalles (usuario / ticket)
-                LayoutBuilder(
-                  builder: (context, c) {
-                    final isWide = c.maxWidth >= 700;
-                    final children = [
-                      _InfoCard(
-                        title: 'Información del Usuario',
-                        icon: Icons.person_outline,
-                        rows: [
-                          ['Nombre:', widget.ticket['user']],
-                          ['Email:', widget.ticket['userEmail']],
-                          ['Categoría:', widget.ticket['category']],
-                          ['Prioridad:', widget.ticket['priority']],
-                        ],
-                      ),
-                      _InfoCard(
-                        title: 'Información del Ticket',
-                        icon: Icons.schedule,
-                        rows: [
-                          ['Asignado a:', widget.ticket['assignedTo'] ?? 'Sin asignar'],
-                          ['Creado:', widget.ticket['createdAt']],
-                          ['Actualizado:', widget.ticket['lastUpdate']],
-                          if (isResolved && widget.ticket['resolutionDate'] != null)
-                            ['Resuelto:', widget.ticket['resolutionDate']],
-                        ],
-                      ),
-                    ];
-                    return isWide
-                        ? Row(
-                            children: [
-                              Expanded(child: children[0]),
-                              const SizedBox(width: 12),
-                              Expanded(child: children[1]),
-                            ],
-                          )
-                        : Column(
-                            children: [children[0], const SizedBox(height: 12), children[1]],
-                          );
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                // Acciones rápidas
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadTicketDetails,
+                    color: const Color(0xFF1C9985),
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
                       children: [
-                        Text('Acciones Rápidas', style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(height: 8),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            // Determinar número de columnas según ancho disponible
-                            final width = constraints.maxWidth;
-                            final crossAxisCount = width < 400 ? 2 : 3; // 2 columnas en móvil, 3 en tablet+
-                            
-                            final actions = [
-                              _ActionButton(
-                                onPressed: () => _handleStatusChange('en proceso'),
-                                icon: Icons.play_arrow,
-                                label: 'En Proceso',
-                                isPrimary: true,
-                              ),
-                              _ActionButton(
-                                onPressed: () => _handleStatusChange('pendiente'),
-                                icon: Icons.schedule,
-                                label: 'Pendiente',
-                                isPrimary: false,
-                              ),
-                              _ActionButton(
-                                onPressed: () => _handleStatusChange('resuelto'),
-                                icon: Icons.check_circle_outline,
-                                label: 'Resolver',
-                                isPrimary: false,
-                              ),
-                              if (isResolved)
-                                _ActionButton(
-                                  onPressed: _printVoucher,
-                                  icon: Icons.print,
-                                  label: 'Imprimir',
-                                  isPrimary: true,
-                                  color: Colors.green,
-                                ),
-                              _ActionButton(
-                                onPressed: () => _handleAssignTicket('Yo (Admin)'),
-                                icon: Icons.person_add_alt_1,
-                                label: 'Asignarme',
-                                isPrimary: false,
-                              ),
-                            ];
-                            
-                            return GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                childAspectRatio: 2.5, // Ratio ancho:alto para botones
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                              itemCount: actions.length,
-                              itemBuilder: (context, index) => actions[index],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // Conversación + Voucher + Responder
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: cs.outlineVariant.withOpacity(0.5),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.forum_outlined, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Conversación (${messages.length})',
-                              style: Theme.of(context).textTheme.titleSmall,
+                        // Ticket info card
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: cs.outlineVariant.withOpacity(0.5),
+                              width: 0.5,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ...messages.map((m) {
-                          final bool internal = m['isInternal'] as bool;
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: EdgeInsets.all(internal ? 12 : 0),
-                            decoration: BoxDecoration(
-                              color: internal ? Colors.yellow.withOpacity(0.12) : null,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: (m['role'] == 'user')
-                                      ? Colors.blue.shade100
-                                      : const Color(0xFF1C9985),
-                                  child: Text(
-                                    _initials(m['author']),
-                                    style: TextStyle(
-                                      color: (m['role'] == 'user')
-                                          ? Colors.blue.shade700
-                                          : Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            m['author'],
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          _Badge(
-                                            label: m['role'] == 'user' ? 'Usuario' : 'Soporte',
-                                            color: m['role'] == 'user' 
-                                                ? Colors.blue 
-                                                : const Color(0xFF1C9985),
-                                          ),
-                                          if (internal) ...[
-                                            const SizedBox(width: 6),
-                                            const _Badge(label: 'Interno', color: Colors.amber),
+                                          if (!isEditing) ...[
+                                            Text(
+                                              ticketTitle,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              ticketDescription,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.copyWith(
+                                                    color: cs.onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ] else ...[
+                                            TextFormField(
+                                              initialValue: ticketTitle,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Título',
+                                              ),
+                                              onChanged: (v) =>
+                                                  widget.ticket['title'] = v,
+                                            ),
+                                            const SizedBox(height: 8),
+                                            TextFormField(
+                                              initialValue: ticketDescription,
+                                              maxLines: 5,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Descripción',
+                                              ),
+                                              onChanged: (v) =>
+                                                  widget.ticket['description'] =
+                                                      v,
+                                            ),
                                           ],
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        m['content'],
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        m['timestamp'],
-                                        style: TextStyle(
-                                          color: cs.onSurfaceVariant,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-
-                        const Divider(height: 28),
-
-                        // Sección Voucher (si resuelto)
-                        if (isResolved) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.08),
-                              border: Border.all(color: Colors.green.withOpacity(0.3)),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle_outline,
-                                          color: Colors.green.shade800,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Ticket Resuelto',
-                                          style: TextStyle(
-                                            color: Colors.green.shade800,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Este ticket ha sido resuelto. Puedes imprimir el voucher.',
-                                      style: TextStyle(
-                                        color: Colors.green.shade800,
-                                        fontSize: 12,
+                                    const SizedBox(width: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: () {
+                                        setState(() => isEditing = !isEditing);
+                                        if (!isEditing) {
+                                          widget.onUpdateTicket(widget.ticket);
+                                        }
+                                      },
+                                      icon: Icon(
+                                        isEditing ? Icons.save : Icons.edit,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        isEditing ? 'Guardar' : 'Editar',
                                       ),
                                     ),
                                   ],
                                 ),
-                                FilledButton.icon(
-                                  onPressed: _printVoucher,
-                                  icon: const Icon(Icons.print, size: 18),
-                                  label: const Text('Imprimir Voucher'),
-                                  style: FilledButton.styleFrom(backgroundColor: Colors.green),
-                                ),
                               ],
                             ),
                           ),
-                          const Divider(height: 28),
-                        ],
+                        ),
 
-                        // Responder
-                        Row(
-                          children: [
-                            Text('Responder al ticket', style: Theme.of(context).textTheme.titleSmall),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () => FocusScope.of(context).unfocus(),
-                              icon: const Icon(Icons.keyboard_hide, size: 20),
-                              tooltip: 'Cerrar teclado',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _replyCtrl,
-                          minLines: 3,
-                          maxLines: 6,
-                          textInputAction: TextInputAction.newline,
-                          onChanged: (value) => setState(() {}), // Para actualizar el estado del botón
-                          decoration: const InputDecoration(
-                            hintText: 'Escribe tu respuesta...',
-                            border: OutlineInputBorder(),
-                            suffixIcon: Icon(Icons.send),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         LayoutBuilder(
-                          builder: (context, constraints) {
-                            final isMobile = constraints.maxWidth < 600;
-                            
-                            if (isMobile) {
-                              // Layout móvil: Todo en columnas
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                          builder: (context, c) {
+                            final isWide = c.maxWidth >= 700;
+                            final children = [
+                              _InfoCard(
+                                title: 'Información del Usuario',
+                                icon: Icons.person_outline,
+                                rows: [
+                                  ['Nombre:', empleadoNombreCompleto],
+                                  ['Email:', empleadoEmail],
+                                  if (perfilData != null) ...[
+                                    ['Área:', empleadoArea],
+                                    [
+                                      'ID Empleado:',
+                                      ticketEmployeeId.toString(),
+                                    ],
+                                  ],
+                                  ['Categoría:', ticketCategory],
+                                  ['Prioridad:', ticketPriority],
+                                ],
+                              ),
+                              _InfoCard(
+                                title: 'Información del Ticket',
+                                icon: Icons.schedule,
+                                rows: [
+                                  if (ticketData != null) ...[
+                                    [
+                                      'ID Empleado:',
+                                      ticketEmployeeId.toString(),
+                                    ],
+                                    [
+                                      'Ubicación:',
+                                      ticketLocation.isNotEmpty
+                                          ? ticketLocation
+                                          : 'No especificada',
+                                    ],
+                                    ['Estado:', displayStatus],
+                                    [
+                                      'Creado:',
+                                      _formatDateTime(ticketCreatedAt),
+                                    ],
+                                    if (ticketFiles.isNotEmpty)
+                                      [
+                                        'Archivos:',
+                                        '${ticketFiles.length} archivo(s)',
+                                      ],
+                                  ] else ...[
+                                    [
+                                      'Asignado a:',
+                                      widget.ticket['assignedTo'] ??
+                                          'Sin asignar',
+                                    ],
+                                    ['Creado:', widget.ticket['createdAt']],
+                                    [
+                                      'Actualizado:',
+                                      widget.ticket['lastUpdate'],
+                                    ],
+                                  ],
+                                  if (isResolved &&
+                                      widget.ticket['resolutionDate'] != null)
+                                    [
+                                      'Resuelto:',
+                                      widget.ticket['resolutionDate'],
+                                    ],
+                                ],
+                              ),
+                            ];
+                            return isWide
+                                ? Row(
+                                    children: [
+                                      Expanded(child: children[0]),
+                                      const SizedBox(width: 12),
+                                      Expanded(child: children[1]),
+                                    ],
+                                  )
+                                : Column(
+                                    children: [
+                                      children[0],
+                                      const SizedBox(height: 12),
+                                      children[1],
+                                    ],
+                                  );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        if (!isResolved)
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: cs.outlineVariant.withOpacity(0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Primera fila: Adjuntar y Nota interna
+                                  Text(
+                                    'Acciones Rápidas',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleSmall,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final width = constraints.maxWidth;
+                                      final crossAxisCount = width < 400
+                                          ? 2
+                                          : 3;
+
+                                      final actions = [
+                                        _ActionButton(
+                                          onPressed: isLoadingTicket
+                                              ? null
+                                              : () => _handleStatusChange(
+                                                  'resuelto',
+                                                ),
+                                          icon: Icons.check_circle_outline,
+                                          label: 'Resuelto',
+                                          isPrimary: true,
+                                        ),
+                                        _ActionButton(
+                                          onPressed: isLoadingTicket
+                                              ? null
+                                              : () => _handleStatusChange(
+                                                  'cerrado',
+                                                ),
+                                          icon: Icons.lock,
+                                          label: 'Cerrado',
+                                          isPrimary: false,
+                                        ),
+                                      ];
+
+                                      return GridView.builder(
+                                        shrinkWrap: true,
+                                        physics:
+                                            const NeverScrollableScrollPhysics(),
+                                        gridDelegate:
+                                            SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: crossAxisCount,
+                                              childAspectRatio: 2.5,
+                                              crossAxisSpacing: 8,
+                                              mainAxisSpacing: 8,
+                                            ),
+                                        itemCount: actions.length,
+                                        itemBuilder: (context, index) =>
+                                            actions[index],
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (isResolved)
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: cs.outlineVariant.withOpacity(0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Ticket Finalizado',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleSmall,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: _ActionButton(
+                                      onPressed: _printVoucher,
+                                      icon: Icons.print,
+                                      label: 'Imprimir Comprobante',
+                                      isPrimary: true,
+                                      color: Colors.green,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        const SizedBox(height: 12),
+                        if (!isResolved)
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: cs.outlineVariant.withOpacity(0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Row(
                                     children: [
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          onPressed: () {},
-                                          icon: const Icon(Icons.attach_file, size: 16),
-                                          label: const FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Text('Adjuntar', style: TextStyle(fontSize: 12)),
-                                          ),
-                                        ),
+                                      const Icon(
+                                        Icons.forum_outlined,
+                                        size: 18,
                                       ),
-                                      const SizedBox(width: 8),
-                                      Row(
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Conversación (${messages.length})',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleSmall,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  ...messages.map((m) {
+                                    final bool internal =
+                                        m['isInternal'] as bool;
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: EdgeInsets.all(
+                                        internal ? 12 : 0,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: internal
+                                            ? Colors.yellow.withOpacity(0.12)
+                                            : null,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Checkbox(
-                                            value: isInternalNote,
-                                            onChanged: (v) => setState(() => isInternalNote = v ?? false),
+                                          CircleAvatar(
+                                            radius: 16,
+                                            backgroundColor:
+                                                (m['role'] == 'user')
+                                                ? Colors.blue.shade100
+                                                : const Color(0xFF1C9985),
+                                            child: Text(
+                                              _initials(m['author']),
+                                              style: TextStyle(
+                                                color: (m['role'] == 'user')
+                                                    ? Colors.blue.shade700
+                                                    : Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12,
+                                              ),
+                                            ),
                                           ),
-                                          const Text('Interno', style: TextStyle(fontSize: 12)),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Text(
+                                                      m['author'],
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    _Badge(
+                                                      label: m['role'] == 'user'
+                                                          ? 'Usuario'
+                                                          : 'Soporte',
+                                                      color: m['role'] == 'user'
+                                                          ? Colors.blue
+                                                          : const Color(
+                                                              0xFF1C9985,
+                                                            ),
+                                                    ),
+                                                    if (internal) ...[
+                                                      const SizedBox(width: 6),
+                                                      const _Badge(
+                                                        label: 'Interno',
+                                                        color: Colors.amber,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  m['content'],
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  m['timestamp'],
+                                                  style: TextStyle(
+                                                    color: cs.onSurfaceVariant,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         ],
+                                      ),
+                                    );
+                                  }),
+
+                                  const Divider(height: 28),
+
+                                  // Sección Voucher (si resuelto)
+                                  if (isResolved) ...[
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.withOpacity(0.08),
+                                        border: Border.all(
+                                          color: Colors.green.withOpacity(0.3),
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.check_circle_outline,
+                                                    color:
+                                                        Colors.green.shade800,
+                                                    size: 18,
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'Ticket Resuelto',
+                                                    style: TextStyle(
+                                                      color:
+                                                          Colors.green.shade800,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Este ticket ha sido resuelto. Puedes imprimir el voucher.',
+                                                style: TextStyle(
+                                                  color: Colors.green.shade800,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          FilledButton.icon(
+                                            onPressed: _printVoucher,
+                                            icon: const Icon(
+                                              Icons.print,
+                                              size: 18,
+                                            ),
+                                            label: const Text(
+                                              'Imprimir Voucher',
+                                            ),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Divider(height: 28),
+                                  ],
+
+                                  // Responder
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Responder al ticket',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleSmall,
+                                      ),
+                                      const Spacer(),
+                                      IconButton(
+                                        onPressed: () =>
+                                            FocusScope.of(context).unfocus(),
+                                        icon: const Icon(
+                                          Icons.keyboard_hide,
+                                          size: 20,
+                                        ),
+                                        tooltip: 'Cerrar teclado',
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-                                  // Segunda fila: Botones de acción
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          onPressed: () => _replyCtrl.clear(),
-                                          icon: const Icon(Icons.close, size: 16),
-                                          label: const Text('Cancelar', style: TextStyle(fontSize: 12)),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        flex: 2,
-                                        child: FilledButton.icon(
-                                          onPressed: _replyCtrl.text.trim().isEmpty ? null : () {
-                                            _handleSendMessage();
-                                            FocusScope.of(context).unfocus();
-                                          },
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: const Color(0xFF1C9985),
-                                            disabledBackgroundColor: Colors.grey[300],
-                                          ),
-                                          icon: const Icon(Icons.send, size: 16),
-                                          label: const Text('Enviar', style: TextStyle(fontSize: 12)),
-                                        ),
-                                      ),
-                                    ],
+                                  TextField(
+                                    controller: _replyCtrl,
+                                    minLines: 3,
+                                    maxLines: 6,
+                                    textInputAction: TextInputAction.newline,
+                                    onChanged: (value) => setState(
+                                      () {},
+                                    ), // Para actualizar el estado del botón
+                                    decoration: const InputDecoration(
+                                      hintText: 'Escribe tu respuesta...',
+                                      border: OutlineInputBorder(),
+                                      suffixIcon: Icon(Icons.send),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final isMobile =
+                                          constraints.maxWidth < 600;
+
+                                      if (isMobile) {
+                                        // Layout móvil: Todo en columnas
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () {},
+                                                    icon: const Icon(
+                                                      Icons.attach_file,
+                                                      size: 16,
+                                                    ),
+                                                    label: const FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      child: Text(
+                                                        'Adjuntar',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Row(),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            // Segunda fila: Botones de acción
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        _replyCtrl.clear(),
+                                                    icon: const Icon(
+                                                      Icons.close,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text(
+                                                      'Cancelar',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: FilledButton.icon(
+                                                    onPressed:
+                                                        _replyCtrl.text
+                                                            .trim()
+                                                            .isEmpty
+                                                        ? null
+                                                        : () {
+                                                            _handleSendMessage();
+                                                            FocusScope.of(
+                                                              context,
+                                                            ).unfocus();
+                                                          },
+                                                    style: FilledButton.styleFrom(
+                                                      backgroundColor:
+                                                          const Color(
+                                                            0xFF1C9985,
+                                                          ),
+                                                      disabledBackgroundColor:
+                                                          Colors.grey[300],
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.send,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text(
+                                                      'Enviar',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        );
+                                      } else {
+                                        // Layout desktop: Una sola fila
+                                        return Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                OutlinedButton.icon(
+                                                  onPressed: () {},
+                                                  icon: const Icon(
+                                                    Icons.attach_file,
+                                                    size: 18,
+                                                  ),
+                                                  label: const Text('Adjuntar'),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Row(
+                                                  children: [
+                                                    Checkbox(
+                                                      value: isInternalNote,
+                                                      onChanged: (v) =>
+                                                          setState(
+                                                            () =>
+                                                                isInternalNote =
+                                                                    v ?? false,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            Row(
+                                              children: [
+                                                OutlinedButton.icon(
+                                                  onPressed: () =>
+                                                      _replyCtrl.clear(),
+                                                  icon: const Icon(
+                                                    Icons.close,
+                                                    size: 18,
+                                                  ),
+                                                  label: const Text('Cancelar'),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                FilledButton.icon(
+                                                  onPressed:
+                                                      _replyCtrl.text
+                                                          .trim()
+                                                          .isEmpty
+                                                      ? null
+                                                      : () {
+                                                          _handleSendMessage();
+                                                          FocusScope.of(
+                                                            context,
+                                                          ).unfocus();
+                                                        },
+                                                  style: FilledButton.styleFrom(
+                                                    backgroundColor:
+                                                        const Color(0xFF1C9985),
+                                                    disabledBackgroundColor:
+                                                        Colors.grey[300],
+                                                  ),
+                                                  icon: const Icon(
+                                                    Icons.send,
+                                                    size: 18,
+                                                  ),
+                                                  label: const Text('Enviar'),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        );
+                                      }
+                                    },
                                   ),
                                 ],
-                              );
-                            } else {
-                              // Layout desktop: Una sola fila
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              ),
+                            ),
+                          ),
+
+                        // Información para tickets finalizados
+                        if (isResolved)
+                          Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: cs.outlineVariant.withOpacity(0.5),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
                                 children: [
-                                  Row(
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: () {},
-                                        icon: const Icon(Icons.attach_file, size: 18),
-                                        label: const Text('Adjuntar'),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Row(
-                                        children: [
-                                          Checkbox(
-                                            value: isInternalNote,
-                                            onChanged: (v) => setState(() => isInternalNote = v ?? false),
-                                          ),
-                                          const Text('Nota interna'),
-                                        ],
-                                      ),
-                                    ],
+                                  Icon(
+                                    ticketStatus == 'resuelto'
+                                        ? Icons.check_circle
+                                        : Icons.lock,
+                                    size: 48,
+                                    color: ticketStatus == 'resuelto'
+                                        ? Colors.green
+                                        : Colors.grey,
                                   ),
-                                  Row(
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: () => _replyCtrl.clear(),
-                                        icon: const Icon(Icons.close, size: 18),
-                                        label: const Text('Cancelar'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      FilledButton.icon(
-                                        onPressed: _replyCtrl.text.trim().isEmpty ? null : () {
-                                          _handleSendMessage();
-                                          FocusScope.of(context).unfocus();
-                                        },
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(0xFF1C9985),
-                                          disabledBackgroundColor: Colors.grey[300],
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    ticketStatus == 'resuelto'
+                                        ? 'Ticket Resuelto'
+                                        : 'Ticket Cerrado',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: ticketStatus == 'resuelto'
+                                              ? Colors.green
+                                              : Colors.grey[700],
                                         ),
-                                        icon: const Icon(Icons.send, size: 18),
-                                        label: const Text('Enviar'),
-                                      ),
-                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    ticketStatus == 'resuelto'
+                                        ? 'Este ticket ha sido marcado como resuelto. Ya no se pueden enviar más mensajes.'
+                                        : 'Este ticket ha sido cerrado y ya no acepta nuevos mensajes.',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: Colors.grey[600]),
                                   ),
                                 ],
-                              );
-                            }
-                          },
-                        ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -754,14 +1229,11 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   }
 }
 
-// ──────────────────────────────────────────────────────────────
-// Subcomponentes
-// ──────────────────────────────────────────────────────────────
 class _Badge extends StatelessWidget {
   const _Badge({required this.label, required this.color});
   final String label;
   final Color color;
-  
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -785,7 +1257,11 @@ class _Badge extends StatelessWidget {
 }
 
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.icon, required this.rows});
+  const _InfoCard({
+    required this.title,
+    required this.icon,
+    required this.rows,
+  });
   final String title;
   final IconData icon;
   final List<List<String>> rows;
@@ -797,10 +1273,7 @@ class _InfoCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: cs.outlineVariant.withOpacity(0.5),
-          width: 0.5,
-        ),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.5), width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -815,29 +1288,30 @@ class _InfoCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            ...rows.map((r) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        r.first,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+            ...rows.map(
+              (r) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      r.first,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
                       ),
-                      Flexible(
-                        child: Text(
-                          r.last,
-                          textAlign: TextAlign.end,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                    ),
+                    Flexible(
+                      child: Text(
+                        r.last,
+                        textAlign: TextAlign.end,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -854,7 +1328,7 @@ class _ActionButton extends StatelessWidget {
     this.color,
   });
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final IconData icon;
   final String label;
   final bool isPrimary;

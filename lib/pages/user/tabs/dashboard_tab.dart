@@ -255,7 +255,7 @@ class _DashboardTabState extends State<DashboardTab> {
             ),
             SizedBox(height: 16),
             _isLoadingTickets
-                ? Container(
+                ? SizedBox(
                     height: 100,
                     child: Center(
                       child: Column(
@@ -279,7 +279,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     ),
                   )
                 : _myTickets.isEmpty
-                ? Container(
+                ? SizedBox(
                     height: 100,
                     child: Center(
                       child: Column(
@@ -306,7 +306,7 @@ class _DashboardTabState extends State<DashboardTab> {
                     children: [
                       ..._myTickets.take(3).map((ticket) {
                         return _buildTicketCard(ticket);
-                      }).toList(),
+                      }),
                       if (_myTickets.length > 3) ...[
                         SizedBox(height: 8),
                         Container(
