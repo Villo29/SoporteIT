@@ -20,6 +20,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   bool _isSubmitting = false;
+  bool _hasSubmittedSuccessfully = false; // Flag para indicar envío exitoso
 
   // Variables para archivos adjuntos
   final ImagePicker _picker = ImagePicker();
@@ -130,6 +131,11 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
+        
+        // Marcar como enviado exitosamente
+        setState(() {
+          _hasSubmittedSuccessfully = true;
+        });
         
         // Crear el ID del ticket
         String ticketId = 'TK-000';
@@ -452,21 +458,83 @@ class _CreateReportPageState extends State<CreateReportPage> {
     });
   }
 
+  // Método para verificar si hay cambios sin confirmar
+  bool _hasUnsavedChanges() {
+    // Si ya se envió exitosamente, no hay cambios sin confirmar
+    if (_hasSubmittedSuccessfully) {
+      return false;
+    }
+    
+    return _selectedCategory != null ||
+        _priority != null ||
+        _titleController.text.isNotEmpty ||
+        _locationController.text.isNotEmpty ||
+        _descriptionController.text.isNotEmpty ||
+        _selectedImages.isNotEmpty ||
+        _selectedFiles.isNotEmpty;
+  }
+
+  // Método para mostrar el diálogo de confirmación
+  Future<bool> _showExitConfirmationDialog() async {
+    if (!_hasUnsavedChanges()) {
+      return true; // Si no hay cambios, permitir salir sin confirmar
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Se detectaron cambios sin confirmar'),
+          content: Text(
+            '¿Estás seguro de que deseas salir? Los cambios no guardados se perderán.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Continuar editando',
+                style: TextStyle(color: Colors.blue),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                'Descartar cambios',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false; // Si el diálogo se cierra sin selección, no permitir salir
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+    return WillPopScope(
+      onWillPop: () async {
+        return await _showExitConfirmationDialog();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back),
+            onPressed: () async {
+              final shouldPop = await _showExitConfirmationDialog();
+              if (shouldPop && context.mounted) {
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          title: Text('Nuevo Reporte'),
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          elevation: 0,
         ),
-        title: Text('Nuevo Reporte'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: GestureDetector(
+        body: GestureDetector(
         onTap: () {
           FocusScope.of(context).unfocus();
         },
@@ -503,6 +571,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
