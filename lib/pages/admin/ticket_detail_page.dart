@@ -377,7 +377,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     final isUser = senderRole.toLowerCase() == 'empleado';
     
     return {
-      'id': apiMessage['id'],
+      'id': apiMessage['id'].toString(),
       'author': isUser ? empleadoNombreCompleto : 'Soporte Técnico',
       'role': isUser ? 'user' : 'support',
       'content': apiMessage['content'],
