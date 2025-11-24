@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../services/auth_service.dart';
 import 'voucher_print_page.dart';
 
@@ -27,6 +28,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   Map<String, dynamic>? ticketData;
   Map<String, dynamic>? perfilData;
   bool isLoadingTicket = false;
+  
+  // Chat-related state variables
+  Map<String, dynamic>? _room;
+  WebSocketChannel? _webSocketChannel;
+  bool _isLoadingMessages = false;
+  bool _isConnected = false;
 
   Future<void> _loadTicketDetails() async {
     if (widget.ticket['id'] == null) return;
@@ -91,6 +98,9 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         } else {}
       });
       _updateMessagesWithApiData();
+
+      // Load chat room and messages after loading ticket details
+      await _loadChatRoom();
 
       if (ticketBasicData['estado'] == 'abierto') {
         _autoChangeToInProgress();
@@ -256,8 +266,202 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     }
   }
 
+  Future<void> _loadChatRoom() async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+      
+      final ticketId = widget.ticket['id'];
+      if (ticketId == null) return;
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> chatRooms = jsonDecode(response.body);
+
+        // Buscar la sala que corresponde a nuestro ticket
+        Map<String, dynamic>? matchingRoom;
+        for (var room in chatRooms) {
+          if (room['ticket_id'].toString() == ticketId.toString()) {
+            matchingRoom = room;
+            break;
+          }
+        }
+
+        if (matchingRoom != null) {
+          setState(() {
+            _room = matchingRoom;
+          });
+
+          await _loadChatMessages();
+        }
+      }
+    } catch (e) {
+      print('Error al cargar la sala de chat: $e');
+    }
+  }
+
+  Future<void> _loadChatMessages() async {
+    try {
+      setState(() {
+        _isLoadingMessages = true;
+      });
+
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+
+      // Verificar que tenemos la sala de chat
+      if (_room == null) {
+        throw Exception('No se ha cargado la sala de chat');
+      }
+
+      // Usar el room_id que ya obtuvimos
+      final roomId = _room!['id'];
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats/$roomId/messages?limit=50'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        List<dynamic> messagesData;
+
+        if (responseData is List) {
+          messagesData = responseData;
+        } else if (responseData is Map &&
+            responseData.containsKey('messages')) {
+          messagesData = responseData['messages'];
+        } else if (responseData is Map && responseData.containsKey('data')) {
+          messagesData = responseData['data'];
+        } else {
+          messagesData = [];
+        }
+
+        setState(() {
+          messages = messagesData
+              .map((message) => _mapMessageFromApi(message))
+              .toList();
+          _isLoadingMessages = false;
+        });
+
+        _connectWebSocket(token);
+      } else {
+        setState(() {
+          _isLoadingMessages = false;
+        });
+      }
+    } catch (e) {
+      print('Error al cargar mensajes: $e');
+      setState(() {
+        _isLoadingMessages = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> _mapMessageFromApi(Map<String, dynamic> apiMessage) {
+    // El sender_role en la API puede ser 'empleado' o 'admin'
+    final senderRole = apiMessage['sender_role'] ?? '';
+    final isUser = senderRole.toLowerCase() == 'empleado';
+    
+    return {
+      'id': apiMessage['id'],
+      'author': isUser ? empleadoNombreCompleto : 'Soporte Técnico',
+      'role': isUser ? 'user' : 'support',
+      'content': apiMessage['content'],
+      'timestamp': _formatTimestampFromApi(apiMessage['created_at']),
+      'isInternal': false,
+    };
+  }
+
+  String _formatTimestampFromApi(String isoDate) {
+    try {
+      final DateTime messageDate = DateTime.parse(isoDate);
+      final DateTime now = DateTime.now();
+      final Duration difference = now.difference(messageDate);
+
+      if (difference.inDays > 0) {
+        return '${messageDate.year}-${messageDate.month.toString().padLeft(2, '0')}-${messageDate.day.toString().padLeft(2, '0')} ${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      } else {
+        return '${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (e) {
+      return isoDate;
+    }
+  }
+
+  void _connectWebSocket(String token) {
+    if (_room != null) {
+      try {
+        final roomId = _room!['id'];
+        final wsUrl = 'ws://127.0.0.1:8000/chats/ws/$roomId?token=$token';
+
+        _webSocketChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+        setState(() {
+          _isConnected = true;
+        });
+        
+        _webSocketChannel!.stream.listen(
+          (data) {
+            try {
+              final messageData = jsonDecode(data);
+
+              if (messageData['type'] == 'message') {
+                final newMessage = _mapMessageFromApi(messageData);
+
+                if (mounted) {
+                  setState(() {
+                    messages.add(newMessage);
+                  });
+                }
+              }
+            } catch (e) {
+              print('Error al procesar mensaje WebSocket: $e');
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+          onDone: () {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isConnected = false;
+          });
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _webSocketChannel?.sink.close();
     _replyCtrl.dispose();
     super.dispose();
   }
@@ -302,28 +506,61 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     return (a + b).toUpperCase();
   }
 
-  void _handleSendMessage() {
+  void _handleSendMessage() async {
     final txt = _replyCtrl.text.trim();
     if (txt.isEmpty) return;
 
-    setState(() {
-      final now = DateTime.now();
-      final timestamp =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    // Clear the text field immediately
+    final messageContent = txt;
+    _replyCtrl.clear();
 
-      messages.add({
-        'id': (messages.isEmpty ? 0 : (messages.last['id'] as int)) + 1,
-        'author': 'Tú (Admin)',
-        'role': 'support',
-        'timestamp': timestamp,
-        'isInternal': isInternalNote,
+    // If we have a WebSocket connection and room, send through WebSocket
+    if (_room != null && _isConnected && _webSocketChannel != null) {
+      try {
+        final messageData = {
+          'type': 'message',
+          'content': messageContent,
+          'room_id': _room!['id'],
+        };
+        final jsonMessage = jsonEncode(messageData);
+        
+        _webSocketChannel?.sink.add(jsonMessage);
+        
+        setState(() {
+          isInternalNote = false;
+        });
+      } catch (e) {
+        print('Error al enviar mensaje: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al enviar mensaje. Por favor intenta de nuevo.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } else {
+      // Fallback to the old method if WebSocket is not connected
+      setState(() {
+        final now = DateTime.now();
+        final timestamp =
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+        messages.add({
+          'id': (messages.isEmpty ? 0 : (messages.last['id'] as int)) + 1,
+          'author': 'Tú (Admin)',
+          'role': 'support',
+          'content': messageContent,
+          'timestamp': timestamp,
+          'isInternal': isInternalNote,
+        });
+        widget.ticket['lastUpdate'] = timestamp;
+
+        isInternalNote = false;
       });
-      widget.ticket['lastUpdate'] = timestamp;
-
-      _replyCtrl.clear();
-      isInternalNote = false;
-    });
-    widget.onUpdateTicket(widget.ticket);
+      widget.onUpdateTicket(widget.ticket);
+    }
   }
 
   Future<void> _handleStatusChange(String newStatus) async {
