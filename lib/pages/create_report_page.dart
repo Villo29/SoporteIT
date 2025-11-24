@@ -519,15 +519,6 @@ class _CreateReportPageState extends State<CreateReportPage> {
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back),
-            onPressed: () async {
-              final shouldPop = await _onWillPop();
-              if (shouldPop && mounted) {
-                Navigator.pop(context);
-              }
-            },
-          ),
           title: Text('Nuevo Reporte'),
           centerTitle: true,
           backgroundColor: Colors.white,
