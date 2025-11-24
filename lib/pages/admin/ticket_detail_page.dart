@@ -299,7 +299,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
             _room = matchingRoom;
           });
 
-          _loadChatMessages();
+          await _loadChatMessages();
         } else {
           setState(() {
             _isLoadingMessages = false;
@@ -1053,7 +1053,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                                                 shape: BoxShape.circle,
                                               ),
                                             ),
-                                            SizedBox(width: 4),
+                                            const SizedBox(width: 4),
                                             Text(
                                               _isConnected
                                                   ? 'Conectado'
