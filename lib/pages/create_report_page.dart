@@ -20,6 +20,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   bool _isSubmitting = false;
+  bool _formSubmittedSuccessfully = false;
 
   // Variables para archivos adjuntos
   final ImagePicker _picker = ImagePicker();
@@ -86,6 +87,60 @@ class _CreateReportPageState extends State<CreateReportPage> {
     },
   ];
 
+  bool _hasUnsavedChanges() {
+    return _selectedCategory != null ||
+        _priority != null ||
+        _titleController.text.isNotEmpty ||
+        _locationController.text.isNotEmpty ||
+        _descriptionController.text.isNotEmpty ||
+        _selectedImages.isNotEmpty ||
+        _selectedFiles.isNotEmpty;
+  }
+
+  Future<bool> _onWillPop() async {
+    // Si el formulario fue enviado exitosamente, permitir salir sin advertencia
+    if (_formSubmittedSuccessfully) {
+      return true;
+    }
+
+    // Si no hay cambios sin guardar, permitir salir
+    if (!_hasUnsavedChanges()) {
+      return true;
+    }
+
+    // Mostrar diálogo de confirmación
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Se detectaron cambios sin confirmar'),
+          content: Text(
+            '¿Estás seguro de que deseas salir? Se perderán todos los cambios que no hayas guardado.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false); // No salir
+              },
+              child: Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(true); // Salir sin guardar
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: Text('Salir sin guardar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return shouldPop ?? false;
+  }
+
   Future<void> _submitReport() async {
     if (_selectedCategory == null ||
         _priority == null ||
@@ -131,6 +186,11 @@ class _CreateReportPageState extends State<CreateReportPage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
         
+        // Marcar el formulario como enviado exitosamente
+        setState(() {
+          _formSubmittedSuccessfully = true;
+        });
+
         // Crear el ID del ticket
         String ticketId = 'TK-000';
         if (responseData['id'] != null) {
@@ -454,53 +514,52 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: Text('Nuevo Reporte'),
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          elevation: 0,
         ),
-        title: Text('Nuevo Reporte'),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: GestureDetector(
-        onTap: () {
-          FocusScope.of(context).unfocus();
-        },
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // Tipo de Problema
-              _buildCategoryCard(),
-              SizedBox(height: 16),
+        body: GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+          },
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Tipo de Problema
+                _buildCategoryCard(),
+                SizedBox(height: 16),
 
-              // Título del Problema
-              _buildTitleCard(),
-              SizedBox(height: 16),
+                // Título del Problema
+                _buildTitleCard(),
+                SizedBox(height: 16),
 
-              // Prioridad
-              _buildPriorityCard(),
-              SizedBox(height: 16),
+                // Prioridad
+                _buildPriorityCard(),
+                SizedBox(height: 16),
 
-              // Ubicación
-              _buildLocationCard(),
-              SizedBox(height: 16),
+                // Ubicación
+                _buildLocationCard(),
+                SizedBox(height: 16),
 
-              // Descripción Detallada
-              _buildDescriptionCard(),
-              SizedBox(height: 16),
+                // Descripción Detallada
+                _buildDescriptionCard(),
+                SizedBox(height: 16),
 
-              // Archivos Adjuntos
-              _buildAttachmentsCard(),
-              SizedBox(height: 24),
+                // Archivos Adjuntos
+                _buildAttachmentsCard(),
+                SizedBox(height: 24),
 
-              // Botón Enviar
-              _buildSubmitButton(),
-            ],
+                // Botón Enviar
+                _buildSubmitButton(),
+              ],
+            ),
           ),
         ),
       ),
