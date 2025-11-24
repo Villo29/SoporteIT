@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../services/auth_service.dart';
 import 'voucher_print_page.dart';
 
@@ -27,6 +28,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   Map<String, dynamic>? ticketData;
   Map<String, dynamic>? perfilData;
   bool isLoadingTicket = false;
+  
+  // Chat-related state
+  Map<String, dynamic>? _room;
+  bool _isLoadingMessages = true;
+  bool _isConnected = false;
+  WebSocketChannel? _webSocketChannel;
 
   Future<void> _loadTicketDetails() async {
     if (widget.ticket['id'] == null) return;
@@ -210,6 +217,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     super.initState();
     _initializeMessages();
     _loadTicketDetails();
+    _loadChatRoom();
   }
 
   void _initializeMessages() {
@@ -256,9 +264,220 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     }
   }
 
+  Future<void> _loadChatRoom() async {
+    try {
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+      
+      final ticketId = widget.ticket['id']?.toString() ?? '';
+      final ticketNumericId = ticketId.replaceFirst('TK-', '');
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> chatRooms = jsonDecode(response.body);
+
+        // Buscar la sala que corresponde a nuestro ticket
+        Map<String, dynamic>? matchingRoom;
+        for (var room in chatRooms) {
+          if (room['ticket_id'].toString() == ticketNumericId) {
+            matchingRoom = room;
+            break;
+          }
+        }
+
+        if (matchingRoom != null) {
+          setState(() {
+            _room = matchingRoom;
+          });
+
+          _loadChatMessages();
+        } else {
+          setState(() {
+            _isLoadingMessages = false;
+          });
+        }
+      } else {
+        throw Exception(
+          'Error al cargar las salas de chat - Status: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingMessages = false;
+      });
+    }
+  }
+
+  Future<void> _loadChatMessages() async {
+    try {
+      setState(() {
+        _isLoadingMessages = true;
+      });
+
+      final token = await AuthService.getToken();
+      if (token == null) {
+        throw Exception('No se encontró el token de autorización');
+      }
+
+      if (_room == null) {
+        throw Exception('No se ha cargado la sala de chat');
+      }
+
+      final roomId = _room!['id'];
+
+      final response = await http.get(
+        Uri.parse('http://127.0.0.1:8000/chats/$roomId/messages?limit=50'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        List<dynamic> messagesData;
+
+        if (responseData is List) {
+          messagesData = responseData;
+        } else if (responseData is Map &&
+            responseData.containsKey('messages')) {
+          messagesData = responseData['messages'];
+        } else if (responseData is Map && responseData.containsKey('data')) {
+          messagesData = responseData['data'];
+        } else {
+          throw Exception(
+            'Estructura de respuesta no reconocida: ${responseData.keys}',
+          );
+        }
+
+        setState(() {
+          messages = messagesData
+              .map((message) => _mapMessageFromApi(message))
+              .toList();
+          _isLoadingMessages = false;
+        });
+
+        _connectWebSocket(token);
+      } else {
+        throw Exception(
+          'Error al cargar los mensajes - Status: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingMessages = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cargar el chat: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Map<String, dynamic> _mapMessageFromApi(Map<String, dynamic> apiMessage) {
+    final senderRole = apiMessage['sender_role'] ?? '';
+    final isUser = senderRole == 'empleado';
+    
+    return {
+      'id': apiMessage['id'],
+      'author': isUser ? empleadoNombreCompleto : 'Soporte',
+      'role': isUser ? 'user' : 'support',
+      'content': apiMessage['content'],
+      'timestamp': _formatTimestamp(apiMessage['created_at']),
+      'isInternal': false,
+    };
+  }
+
+  String _formatTimestamp(String isoDate) {
+    try {
+      final DateTime messageDate = DateTime.parse(isoDate);
+      final DateTime now = DateTime.now();
+      final Duration difference = now.difference(messageDate);
+
+      if (difference.inDays > 0) {
+        return '${messageDate.day}/${messageDate.month}/${messageDate.year} ${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      } else {
+        return '${messageDate.hour.toString().padLeft(2, '0')}:${messageDate.minute.toString().padLeft(2, '0')}';
+      }
+    } catch (e) {
+      return isoDate;
+    }
+  }
+
+  void _connectWebSocket(String token) {
+    if (_room != null) {
+      try {
+        final roomId = _room!['id'];
+        final wsUrl = 'ws://127.0.0.1:8000/chats/ws/$roomId?token=$token';
+
+        _webSocketChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+        setState(() {
+          _isConnected = true;
+        });
+        
+        _webSocketChannel!.stream.listen(
+          (data) {
+            try {
+              final messageData = jsonDecode(data);
+
+              if (messageData['type'] == 'message') {
+                final newMessage = _mapMessageFromApi(messageData);
+
+                if (mounted) {
+                  setState(() {
+                    messages.add(newMessage);
+                  });
+                }
+              }
+            } catch (e) {
+              print('Error al procesar mensaje WebSocket: $e');
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+          onDone: () {
+            if (mounted) {
+              setState(() {
+                _isConnected = false;
+              });
+            }
+          },
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isConnected = false;
+          });
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _replyCtrl.dispose();
+    _webSocketChannel?.sink.close();
     super.dispose();
   }
 
@@ -302,27 +521,43 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     return (a + b).toUpperCase();
   }
 
-  void _handleSendMessage() {
+  void _handleSendMessage() async {
     final txt = _replyCtrl.text.trim();
     if (txt.isEmpty) return;
 
-    setState(() {
-      final now = DateTime.now();
-      final timestamp =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    if (_room == null || !_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: No hay conexión al chat.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-      messages.add({
-        'id': (messages.isEmpty ? 0 : (messages.last['id'] as int)) + 1,
-        'author': 'Tú (Admin)',
-        'role': 'support',
-        'timestamp': timestamp,
-        'isInternal': isInternalNote,
-      });
-      widget.ticket['lastUpdate'] = timestamp;
+    try {
+      final messageData = {
+        'type': 'message',
+        'content': txt,
+        'room_id': _room!['id'],
+      };
+      final jsonMessage = jsonEncode(messageData);
 
+      _webSocketChannel?.sink.add(jsonMessage);
+      
       _replyCtrl.clear();
       isInternalNote = false;
-    });
+      
+      widget.ticket['lastUpdate'] = DateTime.now().toIso8601String();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al enviar mensaje: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    
     widget.onUpdateTicket(widget.ticket);
   }
 
@@ -788,10 +1023,89 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                                           context,
                                         ).textTheme.titleSmall,
                                       ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _isConnected
+                                              ? Colors.green.withOpacity(0.1)
+                                              : Colors.grey.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: _isConnected
+                                                ? Colors.green
+                                                : Colors.grey,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: _isConnected
+                                                    ? Colors.green
+                                                    : Colors.grey,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              _isConnected
+                                                  ? 'Conectado'
+                                                  : 'Desconectado',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: _isConnected
+                                                    ? Colors.green
+                                                    : Colors.grey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
-                                  ...messages.map((m) {
+                                  if (_isLoadingMessages)
+                                    Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(20),
+                                        child: Column(
+                                          children: [
+                                            CircularProgressIndicator(
+                                              color: Color(0xFF1C9985),
+                                            ),
+                                            SizedBox(height: 12),
+                                            Text(
+                                              'Cargando mensajes...',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  else if (messages.isEmpty)
+                                    Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(20),
+                                        child: Text(
+                                          'No hay mensajes en esta conversación',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    ...messages.map((m) {
                                     final bool internal =
                                         m['isInternal'] as bool;
                                     return Container(
