@@ -331,7 +331,7 @@ class _ReportsTabState extends State<ReportsTab> {
                 }
               }
             } catch (e) {
-              print('Error al procesar mensaje WebSocket: $e');
+              debugPrint('Error al procesar mensaje WebSocket: $e');
             }
           },
           onError: (error) {
