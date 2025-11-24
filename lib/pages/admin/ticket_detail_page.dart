@@ -277,7 +277,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       if (ticketId == null) return;
 
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:8000/chats'),
+        Uri.parse('${AuthService.baseUrl}/chats'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -288,24 +288,22 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         final List<dynamic> chatRooms = jsonDecode(response.body);
 
         // Buscar la sala que corresponde a nuestro ticket
-        Map<String, dynamic>? matchingRoom;
-        for (var room in chatRooms) {
-          if (room['ticket_id'].toString() == ticketId.toString()) {
-            matchingRoom = room;
-            break;
-          }
-        }
+        try {
+          final matchingRoom = chatRooms.firstWhere(
+            (room) => room['ticket_id'].toString() == ticketId.toString(),
+          );
 
-        if (matchingRoom != null) {
           setState(() {
-            _room = matchingRoom;
+            _room = matchingRoom as Map<String, dynamic>;
           });
 
           await _loadChatMessages();
+        } catch (e) {
+          debugPrint('No se encontró sala de chat para el ticket: $ticketId');
         }
       }
     } catch (e) {
-      print('Error al cargar la sala de chat: $e');
+      debugPrint('Error al cargar la sala de chat: $e');
     }
   }
 
@@ -329,7 +327,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       final roomId = _room!['id'];
 
       final response = await http.get(
-        Uri.parse('http://127.0.0.1:8000/chats/$roomId/messages?limit=50'),
+        Uri.parse('${AuthService.baseUrl}/chats/$roomId/messages?limit=50'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -366,7 +364,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         });
       }
     } catch (e) {
-      print('Error al cargar mensajes: $e');
+      debugPrint('Error al cargar mensajes: $e');
       setState(() {
         _isLoadingMessages = false;
       });
@@ -408,7 +406,9 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     if (_room != null) {
       try {
         final roomId = _room!['id'];
-        final wsUrl = 'ws://127.0.0.1:8000/chats/ws/$roomId?token=$token';
+        // Replace http with ws for WebSocket URL
+        final baseWsUrl = AuthService.baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+        final wsUrl = '$baseWsUrl/chats/ws/$roomId?token=$token';
 
         _webSocketChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
@@ -431,7 +431,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                 }
               }
             } catch (e) {
-              print('Error al procesar mensaje WebSocket: $e');
+              debugPrint('Error al procesar mensaje WebSocket: $e');
             }
           },
           onError: (error) {
@@ -530,7 +530,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           isInternalNote = false;
         });
       } catch (e) {
-        print('Error al enviar mensaje: $e');
+        debugPrint('Error al enviar mensaje: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
