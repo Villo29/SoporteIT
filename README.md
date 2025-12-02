@@ -6,11 +6,12 @@ Aplicacion Diseña para el uso del soporte It de ADITECH
 
 This project is a starting point for a Flutter application.
 
-A few resources to get you started if this is your first Flutter project:
+## Backend API
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+The repository now includes a Python/FastAPI backend located in the [`backend/`](backend/) directory. The service exposes:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- Role-aware authentication for admins and users with JWT-based login.
+- MySQL persistence for users and chat messages via SQLAlchemy models.
+- Chat endpoints to send and retrieve conversation history for the support workflow.
+
+See [`backend/README.md`](backend/README.md) for setup instructions.
